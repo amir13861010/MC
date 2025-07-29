@@ -231,12 +231,8 @@ class WithdrawalRequestController extends Controller
      *         description="Transaction hash added successfully"
      *     ),
      *     @OA\Response(
-     *         response=400,
-     *         description="Cannot update completed request or insufficient balance"
-     *     ),
-     *     @OA\Response(
      *         response=404,
-     *         description="Request not found or user not found"
+     *         description="Request not found"
      *     ),
      *     @OA\Response(
      *         response=422,
@@ -256,15 +252,8 @@ class WithdrawalRequestController extends Controller
     
         $withdrawalRequest = WithdrawalRequest::where('withdrawal_id', $requestId)->firstOrFail();
     
-        if (!$withdrawalRequest->canBeUpdated()) {
-            return response()->json([
-                'message' => 'Cannot update completed or cancelled request'
-            ], 400);
-        }
-    
         $withdrawalRequest->update([
-            'transaction_hash' => $request->transaction_hash,
-            'status' => WithdrawalRequest::STATUS_COMPLETED
+            'transaction_hash' => $request->transaction_hash
         ]);
     
         return response()->json([
