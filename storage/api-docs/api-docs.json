@@ -3208,6 +3208,89 @@
                 }
             }
         },
+        "/api/users/{user_id}/sub-users-capital": {
+            "get": {
+                "tags": [
+                    "User"
+                ],
+                "summary": "Get total active capital of all sub-users recursively, the 5% bonus value, and sub-users list",
+                "operationId": "5d025c2fcffb38b09fb7af5209723d53",
+                "parameters": [
+                    {
+                        "name": "user_id",
+                        "in": "path",
+                        "description": "User ID to calculate sub-users' capital for",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "example": "MC123456"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Total sub-users capital, 5% bonus value, and sub-users list",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "user_id": {
+                                            "type": "string"
+                                        },
+                                        "total_sub_users_capital": {
+                                            "type": "number",
+                                            "format": "float"
+                                        },
+                                        "bonus_5_percent": {
+                                            "type": "number",
+                                            "format": "float"
+                                        },
+                                        "sub_users_count": {
+                                            "type": "integer"
+                                        },
+                                        "new_users_24h": {
+                                            "type": "integer"
+                                        },
+                                        "sub_users": {
+                                            "type": "array",
+                                            "items": {
+                                                "properties": {
+                                                    "user_id": {
+                                                        "type": "string"
+                                                    },
+                                                    "name": {
+                                                        "type": "string"
+                                                    },
+                                                    "email": {
+                                                        "type": "string"
+                                                    },
+                                                    "registration_date": {
+                                                        "type": "string",
+                                                        "format": "date-time"
+                                                    },
+                                                    "active_capital": {
+                                                        "type": "number",
+                                                        "format": "float"
+                                                    },
+                                                    "is_new_24h": {
+                                                        "type": "boolean"
+                                                    }
+                                                },
+                                                "type": "object"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "User not found"
+                    }
+                }
+            }
+        },
         "/api/users/btc-wallet": {
             "post": {
                 "tags": [

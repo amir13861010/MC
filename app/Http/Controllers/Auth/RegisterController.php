@@ -72,7 +72,7 @@ class RegisterController extends Controller
             'phone' => 'required|string|max:20',
             'country' => 'required|string|max:100',
             'voucher_id' => 'nullable|string|max:50',
-            'friend_id' => 'nullable|string|regex:/^MC\d{6}$/'
+            'friend_id' => 'required|string|regex:/^MC\d{6}$/'
         ]);
 
         // Check voucher if provided
