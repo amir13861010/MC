@@ -62,7 +62,7 @@ class CheckExpiredTradeFiles extends Command
             // تعیین level (می‌توانید از دیتابیس بگیرید یا ثابت بگذارید)
             $level = 1; // یا از جدول deposits بگیرید
             
-            $url = 'https://mc-next-ten.vercel.app/api/trade';
+            $url = 'https://omegafocus.com/api/trade';
             $token = 'a16b76fdca144deda73730b4be61739e747cbf355f8e054cefbd57f0acb5cfa9';
 
             $response = Http::withHeaders([

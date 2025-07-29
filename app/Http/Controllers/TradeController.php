@@ -54,7 +54,7 @@ class TradeController extends Controller
             return response()->json(['message' => 'User not found'], 404);
         }
 
-        $url = 'https://mc-next-ten.vercel.app/api/trade';
+        $url = 'https://omegafocus.com/api/trade';
         $token = 'a16b76fdca144deda73730b4be61739e747cbf355f8e054cefbd57f0acb5cfa9';
 
         $response = Http::withHeaders([
@@ -233,7 +233,7 @@ class TradeController extends Controller
         $level = $request->input('level', 1);
 
         // Call external API to get new trade data
-        $url = 'https://mc-next-ten.vercel.app/api/trade';
+        $url = 'https://omegafocus.com/api/trade';
         $token = 'a16b76fdca144deda73730b4be61739e747cbf355f8e054cefbd57f0acb5cfa9';
 
         $response = Http::withHeaders([

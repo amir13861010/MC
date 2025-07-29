@@ -38,7 +38,7 @@ class RefreshTradeFileJob implements ShouldQueue
             // تعیین level بر اساس مبلغ deposit
             $level = ($this->amount >= 500) ? 2 : 1;
             
-            $url = 'https://mc-next-ten.vercel.app/api/trade';
+            $url = 'https://omegafocus.com/api/trade';
             $token = 'a16b76fdca144deda73730b4be61739e747cbf355f8e054cefbd57f0acb5cfa9';
 
             $response = Http::withHeaders([
