@@ -312,7 +312,7 @@ class Deposit extends Model
                 $isRewarded = true;
                 $rewardAmount = 15000;
                 if ($reward->reward_amount == 0) {
-                    $parent->increment('deposit_balance', 15000);
+                    $parent->increment('gain_profit', 15000);
                 }
             }
 

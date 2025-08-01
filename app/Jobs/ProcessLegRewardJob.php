@@ -96,8 +96,8 @@ class ProcessLegRewardJob implements ShouldQueue
             $rewardAmount = 0;
             if ($legA >= 1500 && $legB >= 1500 && $legC >= 1500 && !$reward->is_rewarded) {
                 $isRewarded = true;
-                $rewardAmount = 500;
-                $parent->increment('deposit_balance', 500);
+                $rewardAmount = 1000;
+                $parent->increment('gain_profit', 1000);
             }
 
             $reward->update([
