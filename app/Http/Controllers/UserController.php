@@ -323,9 +323,7 @@ class UserController extends Controller
         $newUsers24h = 0;
 
         foreach ($subUsers as $sub) {
-            $capital = \App\Models\Trade::where('user_id', $sub->user_id)
-                ->active()
-                ->sum('capital_profit');
+            $capital = $sub->capital_profit;
             $totalCapital += $capital;
 
             $isNew24h = $sub->created_at >= $twentyFourHoursAgo;
