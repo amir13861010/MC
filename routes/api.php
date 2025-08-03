@@ -127,3 +127,7 @@ Route::get('/trade/{user_id}/expiration', [TradeController::class, 'checkExpirat
 Route::post('/trade/{user_id}/process-daily-profit', [TradeController::class, 'processDailyProfit']);
 Route::post('/trade/{user_id}/renew', [TradeController::class, 'renewTrade']);
 Route::get('/trades/active', [TradeController::class, 'getActiveTrades']);
+Route::get('/trades', [TradeController::class, 'getAllTrades']);
+Route::get('/trades/stats', [TradeController::class, 'getTradeStats']);
+Route::get('/trades/test-connection', [TradeController::class, 'testConnection']);
+Route::post('/trades/sync-files', [TradeController::class, 'syncTradeFiles']);

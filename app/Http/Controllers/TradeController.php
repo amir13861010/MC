@@ -78,18 +78,27 @@ class TradeController extends Controller
 
         $result = $response->json();
 
-        // ذخیره به صورت فایل JSON
-        $filename = $request->user_id . '.json';
+        // ذخیره به صورت فایل JSON در مسیر storage/app/private/trades
+        $filename = $request->user_id . '_' . $request->year . '_' . $request->month . '_' . $request->level . '.json';
         $filePath = 'trades/' . $filename;
+        
+        // اطمینان از وجود پوشه trades
+        if (!Storage::disk('local')->exists('trades')) {
+            Storage::disk('local')->makeDirectory('trades');
+        }
+        
         Storage::disk('local')->put($filePath, json_encode($result, JSON_PRETTY_PRINT));
 
-        // ذخیره مسیر فایل در دیتابیس
-        $trade = Trade::create([
-            'user_id' => $request->user_id,
-            'file_path' => $filePath,
-            'expires_at' => now()->addDays(30), // یک ماه اعتبار
-            'is_active' => true,
-        ]);
+        // ذخیره اطلاعات در دیتابیس
+        $trade = Trade::updateOrCreate(
+            ['user_id' => $request->user_id],
+            [
+                'file_path' => $filePath,
+                'expires_at' => now()->addDays(30), // یک ماه اعتبار
+                'is_active' => true,
+                'last_processed_at' => null,
+            ]
+        );
 
         return response()->json([
             'result' => $result,
@@ -256,12 +265,18 @@ class TradeController extends Controller
 
         $result = $response->json();
 
-        // Save new JSON file
-        $filename = $user_id . '_' . now()->format('Y-m') . '.json';
+        // Save new JSON file in storage/app/private/trades
+        $filename = $user_id . '_' . $year . '_' . $month . '_' . $level . '.json';
         $filePath = 'trades/' . $filename;
+        
+        // اطمینان از وجود پوشه trades
+        if (!Storage::disk('local')->exists('trades')) {
+            Storage::disk('local')->makeDirectory('trades');
+        }
+        
         Storage::disk('local')->put($filePath, json_encode($result, JSON_PRETTY_PRINT));
 
-        // Update trade record
+        // Update trade record in database
         $trade->file_path = $filePath;
         $trade->expires_at = now()->addDays(30);
         $trade->is_active = true;
@@ -300,6 +315,260 @@ class TradeController extends Controller
             'expires_at' => $trade->expires_at,
             'last_processed_at' => $trade->last_processed_at,
         ]);
+    }
+
+    /**
+     * Get all trades from database
+     *
+     * @OA\Get(
+     *     path="/api/trades",
+     *     summary="Get all trades from database",
+     *     tags={"Trade"},
+     *     @OA\Response(
+     *         response=200,
+     *         description="All trades retrieved successfully",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="trades", type="array", @OA\Items(type="object"))
+     *         )
+     *     )
+     * )
+     */
+    public function getAllTrades()
+    {
+        $trades = Trade::with('user')->get();
+        
+        return response()->json([
+            'trades' => $trades->map(function ($trade) {
+                return [
+                    'id' => $trade->id,
+                    'user_id' => $trade->user_id,
+                    'user_name' => $trade->user->name ?? 'Unknown',
+                    'file_path' => $trade->file_path,
+                    'full_file_path' => storage_path('app/private/' . $trade->file_path),
+                    'file_exists' => Storage::disk('local')->exists($trade->file_path),
+                    'is_active' => $trade->is_active,
+                    'is_expired' => $trade->isExpired(),
+                    'remaining_days' => $trade->getRemainingDays(),
+                    'created_at' => $trade->created_at,
+                    'expires_at' => $trade->expires_at,
+                    'last_processed_at' => $trade->last_processed_at,
+                ];
+            })
+        ]);
+    }
+
+    /**
+     * Sync existing trade files with database
+     *
+     * @OA\Post(
+     *     path="/api/trades/sync-files",
+     *     summary="Sync existing trade files with database",
+     *     tags={"Trade"},
+     *     @OA\Response(
+     *         response=200,
+     *         description="Files synced successfully",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string"),
+     *             @OA\Property(property="synced_count", type="integer"),
+     *             @OA\Property(property="files", type="array", @OA\Items(type="object"))
+     *         )
+     *     )
+     * )
+     */
+    public function syncTradeFiles()
+    {
+        $tradesDirectory = 'trades';
+        $syncedFiles = [];
+        $syncedCount = 0;
+
+        // Check if trades directory exists
+        if (!Storage::disk('local')->exists($tradesDirectory)) {
+            return response()->json([
+                'message' => 'Trades directory does not exist',
+                'synced_count' => 0,
+                'files' => []
+            ]);
+        }
+
+        // Get all JSON files in the trades directory
+        $files = Storage::disk('local')->files($tradesDirectory);
+        $jsonFiles = array_filter($files, function($file) {
+            return pathinfo($file, PATHINFO_EXTENSION) === 'json';
+        });
+
+        foreach ($jsonFiles as $file) {
+            $filename = pathinfo($file, PATHINFO_FILENAME);
+            
+            // Extract user_id from filename (assuming format: user_id_year_month_level.json)
+            $parts = explode('_', $filename);
+            if (count($parts) >= 1) {
+                $user_id = $parts[0];
+                
+                // Check if user exists
+                $user = User::where('user_id', $user_id)->first();
+                if ($user) {
+                    // Check if trade record exists in database
+                    $existingTrade = Trade::where('user_id', $user_id)->first();
+                    
+                    if (!$existingTrade) {
+                        // Create new trade record
+                        $trade = Trade::create([
+                            'user_id' => $user_id,
+                            'file_path' => $file,
+                            'expires_at' => now()->addDays(30),
+                            'is_active' => true,
+                            'last_processed_at' => null,
+                        ]);
+                        $syncedCount++;
+                    } else {
+                        // Update existing trade record with current file path
+                        $existingTrade->file_path = $file;
+                        $existingTrade->save();
+                    }
+                    
+                    $syncedFiles[] = [
+                        'file' => $file,
+                        'user_id' => $user_id,
+                        'user_name' => $user->name,
+                        'action' => $existingTrade ? 'updated' : 'created'
+                    ];
+                }
+            }
+        }
+
+        return response()->json([
+            'message' => 'Trade files synced successfully',
+            'synced_count' => $syncedCount,
+            'files' => $syncedFiles
+        ]);
+    }
+
+    /**
+     * Get trade statistics
+     *
+     * @OA\Get(
+     *     path="/api/trades/stats",
+     *     summary="Get trade statistics",
+     *     tags={"Trade"},
+     *     @OA\Response(
+     *         response=200,
+     *         description="Trade statistics retrieved successfully",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="stats", type="object")
+     *         )
+     *     )
+     * )
+     */
+    public function getTradeStats()
+    {
+        $totalTrades = Trade::count();
+        $activeTrades = Trade::active()->count();
+        $expiredTrades = Trade::where('expires_at', '<', now())->count();
+        $tradesWithFiles = Trade::whereRaw('file_path IS NOT NULL')->count();
+        
+        // Count files in storage
+        $filesInStorage = 0;
+        if (Storage::disk('local')->exists('trades')) {
+            $files = Storage::disk('local')->files('trades');
+            $filesInStorage = count(array_filter($files, function($file) {
+                return pathinfo($file, PATHINFO_EXTENSION) === 'json';
+            }));
+        }
+
+        // Get recent trades
+        $recentTrades = Trade::with('user')
+            ->orderBy('created_at', 'desc')
+            ->limit(5)
+            ->get()
+            ->map(function ($trade) {
+                return [
+                    'user_id' => $trade->user_id,
+                    'user_name' => $trade->user->name ?? 'Unknown',
+                    'file_path' => $trade->file_path,
+                    'file_exists' => Storage::disk('local')->exists($trade->file_path),
+                    'created_at' => $trade->created_at,
+                    'is_active' => $trade->isActive(),
+                ];
+            });
+
+        return response()->json([
+            'stats' => [
+                'total_trades' => $totalTrades,
+                'active_trades' => $activeTrades,
+                'expired_trades' => $expiredTrades,
+                'trades_with_files' => $tradesWithFiles,
+                'files_in_storage' => $filesInStorage,
+                'storage_path' => storage_path('app/private/trades'),
+                'recent_trades' => $recentTrades,
+            ]
+        ]);
+    }
+
+    /**
+     * Test database connection and file storage
+     *
+     * @OA\Get(
+     *     path="/api/trades/test-connection",
+     *     summary="Test database connection and file storage",
+     *     tags={"Trade"},
+     *     @OA\Response(
+     *         response=200,
+     *         description="Connection test completed",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="database", type="object"),
+     *             @OA\Property(property="storage", type="object")
+     *         )
+     *     )
+     * )
+     */
+    public function testConnection()
+    {
+        $results = [
+            'database' => [],
+            'storage' => [],
+        ];
+
+        // Test database connection
+        try {
+            $tradeCount = Trade::count();
+            $results['database']['status'] = 'connected';
+            $results['database']['trade_count'] = $tradeCount;
+            $results['database']['message'] = 'Database connection successful';
+        } catch (\Exception $e) {
+            $results['database']['status'] = 'error';
+            $results['database']['message'] = 'Database connection failed: ' . $e->getMessage();
+        }
+
+        // Test storage connection
+        try {
+            $storagePath = storage_path('app/private/trades');
+            $results['storage']['storage_path'] = $storagePath;
+            
+            // Check if directory exists
+            if (!Storage::disk('local')->exists('trades')) {
+                Storage::disk('local')->makeDirectory('trades');
+                $results['storage']['directory_created'] = true;
+            } else {
+                $results['storage']['directory_exists'] = true;
+            }
+            
+            // Count files
+            $files = Storage::disk('local')->files('trades');
+            $jsonFiles = array_filter($files, function($file) {
+                return pathinfo($file, PATHINFO_EXTENSION) === 'json';
+            });
+            
+            $results['storage']['status'] = 'connected';
+            $results['storage']['total_files'] = count($files);
+            $results['storage']['json_files'] = count($jsonFiles);
+            $results['storage']['message'] = 'Storage connection successful';
+            
+        } catch (\Exception $e) {
+            $results['storage']['status'] = 'error';
+            $results['storage']['message'] = 'Storage connection failed: ' . $e->getMessage();
+        }
+
+        return response()->json($results);
     }
 
     /**
