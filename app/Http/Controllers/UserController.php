@@ -1056,7 +1056,7 @@ public function getDailyRegistrations(Request $request)
      *         in="path",
      *         description="ID of the user to get the sub-users capital report for",
      *         required=true,
-     *         @OA\Schema(type="integer")
+     *         @OA\Schema(type="string")
      *     ),
      *     @OA\Response(
      *         response=200,
