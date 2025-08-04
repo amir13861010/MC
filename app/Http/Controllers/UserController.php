@@ -263,156 +263,95 @@ class UserController extends Controller
         ]);
     }
 
-/**
- * @OA\Get(
- *     path="/api/users/{user_id}/sub-users-daily-capital",
- *     summary="Get total active capital of all sub-users recursively, the 5% bonus value, and sub-users list",
- *     tags={"User"},
- *     @OA\Parameter(
- *         name="user_id",
- *         in="path",
- *         required=true,
- *         description="User ID to calculate sub-users' capital for",
- *         @OA\Schema(type="string", example="MC123456")
- *     ),
- *     @OA\Parameter(
- *         name="time_frame",
- *         in="query",
- *         required=false,
- *         description="Time frame for filtering (24h, 7d, 30d, all)",
- *         @OA\Schema(type="string", example="24h")
- *     ),
- *     @OA\Response(
- *         response=200,
- *         description="Total sub-users capital, 5% bonus value, and sub-users list",
- *         @OA\JsonContent(
- *             @OA\Property(property="user_id", type="string"),
- *             @OA\Property(property="total_sub_users_capital", type="number", format="float"),
- *             @OA\Property(property="bonus_5_percent", type="number", format="float"),
- *             @OA\Property(property="sub_users_count", type="integer"),
- *             @OA\Property(property="new_users_24h", type="integer"),
- *             @OA\Property(property="daily_data", type="array", @OA\Items(
- *                 @OA\Property(property="date", type="string", format="date"),
- *                 @OA\Property(property="total_capital", type="number", format="float"),
- *                 @OA\Property(property="bonus", type="number", format="float"),
- *                 @OA\Property(property="new_users_count", type="integer")
- *             )),
- *             @OA\Property(property="sub_users", type="array", @OA\Items(
- *                 @OA\Property(property="user_id", type="string"),
- *                 @OA\Property(property="name", type="string"),
- *                 @OA\Property(property="email", type="string"),
- *                 @OA\Property(property="registration_date", type="string", format="date-time"),
- *                 @OA\Property(property="active_capital", type="number", format="float"),
- *                 @OA\Property(property="is_new_24h", type="boolean")
- *             ))
- *         )
- *     ),
- *     @OA\Response(response=404, description="User not found")
- * )
- */
-public function getSubUsersDailyCapital($userId, Request $request)
-{
-    $user = User::where('user_id', $userId)->first();
-    if (!$user) {
-        return response()->json(['message' => 'User not found'], 404);
-    }
-
-    // Validate time_frame parameter
-    $request->validate([
-        'time_frame' => 'nullable|in:24h,7d,30d,all',
-    ]);
-
-    // Get time frame from request
-    $timeFrame = $request->input('time_frame', 'all');
-
-    // Recursive function to get all sub-users
-    $getAllSubUsers = function($user) use (&$getAllSubUsers) {
-        $subs = [];
-        foreach ($user->referrals as $ref) {
-            $subs[] = $ref;
-            $subs = array_merge($subs, $getAllSubUsers($ref));
-        }
-        return $subs;
-    };
-
-    $subUsers = $getAllSubUsers($user);
-    $twentyFourHoursAgo = now()->subHours(24);
-
-    // Prepare sub-users data with capital and new user status
-    $subUsersData = [];
-    $totalCapital = 0;
-    $newUsers24h = 0;
-    
-    // For daily breakdown
-    $dailyData = [];
-    $dailyGrouped = collect($subUsers)->groupBy(function($item) {
-        return $item->created_at->format('Y-m-d');
-    });
-
-    foreach ($dailyGrouped as $date => $dailyUsers) {
-        $dailyCapital = $dailyUsers->sum('capital_profit');
-        $dailyNewUsers = $dailyUsers->filter(function($user) use ($date) {
-            return $user->created_at->format('Y-m-d') === $date;
-        })->count();
-
-        $dailyData[] = [
-            'date' => $date,
-            'total_capital' => $dailyCapital,
-            'bonus' => $dailyCapital * 0.05,
-            'new_users_count' => $dailyNewUsers
-        ];
-    }
-
-    // Sort daily_data by date
-    usort($dailyData, function($a, $b) {
-        return strtotime($a['date']) - strtotime($b['date']);
-    });
-
-    // Filter sub-users based on time frame
-    $filteredSubUsers = collect($subUsers)->filter(function($user) use ($timeFrame) {
-        switch ($timeFrame) {
-            case '24h':
-                return $user->created_at >= now()->subHours(24);
-            case '7d':
-                return $user->created_at >= now()->subDays(7);
-            case '30d':
-                return $user->created_at >= now()->subDays(30);
-            default:
-                return true; // all
-        }
-    });
-
-    foreach ($filteredSubUsers as $sub) {
-        $capital = $sub->capital_profit;
-        $totalCapital += $capital;
-
-        $isNew24h = $sub->created_at >= $twentyFourHoursAgo;
-        if ($isNew24h) {
-            $newUsers24h++;
+    /**
+     * @OA\Get(
+     *     path="/api/users/{user_id}/sub-users-capital",
+     *     summary="Get total active capital of all sub-users recursively, the 5% bonus value, and sub-users list",
+     *     tags={"User"},
+     *     @OA\Parameter(
+     *         name="user_id",
+     *         in="path",
+     *         required=true,
+     *         description="User ID to calculate sub-users' capital for",
+     *         @OA\Schema(type="string", example="MC123456")
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Total sub-users capital, 5% bonus value, and sub-users list",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="user_id", type="string"),
+     *             @OA\Property(property="total_sub_users_capital", type="number", format="float"),
+     *             @OA\Property(property="bonus_5_percent", type="number", format="float"),
+     *             @OA\Property(property="sub_users_count", type="integer"),
+     *             @OA\Property(property="new_users_24h", type="integer"),
+     *             @OA\Property(property="sub_users", type="array", @OA\Items(
+     *                 @OA\Property(property="user_id", type="string"),
+     *                 @OA\Property(property="name", type="string"),
+     *                 @OA\Property(property="email", type="string"),
+     *                 @OA\Property(property="registration_date", type="string", format="date-time"),
+     *                 @OA\Property(property="active_capital", type="number", format="float"),
+     *                 @OA\Property(property="is_new_24h", type="boolean")
+     *             ))
+     *         )
+     *     ),
+     *     @OA\Response(response=404, description="User not found")
+     * )
+     */
+    public function getSubUsersCapital($userId)
+    {
+        $user = User::where('user_id', $userId)->first();
+        if (!$user) {
+            return response()->json(['message' => 'User not found'], 404);
         }
 
-        $subUsersData[] = [
-            'user_id' => $sub->user_id,
-            'name' => $sub->first_name . ' ' . $sub->last_name,
-            'email' => $sub->email,
-            'registration_date' => $sub->created_at->toIso8601String(),
-            'active_capital' => $capital,
-            'is_new_24h' => $isNew24h
-        ];
+        // Recursive function to get all sub-users
+        $getAllSubUsers = function($user) use (&$getAllSubUsers) {
+            $subs = [];
+            foreach ($user->referrals as $ref) {
+                $subs[] = $ref;
+                $subs = array_merge($subs, $getAllSubUsers($ref));
+            }
+            return $subs;
+        };
+
+        $subUsers = $getAllSubUsers($user);
+        $twentyFourHoursAgo = now()->subHours(24);
+
+        // Prepare sub-users data with capital and new user status
+        $subUsersData = [];
+        $totalCapital = 0;
+        $newUsers24h = 0;
+
+        foreach ($subUsers as $sub) {
+            $capital = $sub->capital_profit;
+            $totalCapital += $capital;
+
+            $isNew24h = $sub->created_at >= $twentyFourHoursAgo;
+            if ($isNew24h) {
+                $newUsers24h++;
+            }
+
+            $subUsersData[] = [
+                'user_id' => $sub->user_id,
+                'name' => $sub->first_name . ' ' . $sub->last_name,
+                'email' => $sub->email,
+                'registration_date' => $sub->created_at,
+                'active_capital' => $capital,
+                'is_new_24h' => $isNew24h
+            ];
+        }
+
+        $bonus = $totalCapital * 0.05;
+
+        return response()->json([
+            'user_id' => $userId,
+            'total_sub_users_capital' => $totalCapital,
+            'bonus_5_percent' => $bonus,
+            'sub_users_count' => count($subUsers),
+            'new_users_24h' => $newUsers24h,
+            'sub_users' => $subUsersData
+        ]);
     }
-
-    $bonus = $totalCapital * 0.05;
-
-    return response()->json([
-        'user_id' => $userId,
-        'total_sub_users_capital' => $totalCapital,
-        'bonus_5_percent' => $bonus,
-        'sub_users_count' => count($filteredSubUsers),
-        'new_users_24h' => $newUsers24h,
-        'daily_data' => $dailyData,
-        'sub_users' => $subUsersData
-    ]);
-}
 
     /**
      * @OA\Post(
