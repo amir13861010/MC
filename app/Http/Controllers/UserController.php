@@ -1046,7 +1046,7 @@ public function getDailyRegistrations(Request $request)
     }
         /**
      * @OA\Get(
-     *     path="/sub-users-capital-daily/{userId}",
+     *     path="/api//sub-users-capital-daily/{userId}",
      *     summary="Get daily capital report for sub-users",
      *     description="Returns a daily report of capital, bonus, sub-users count, and new users in the last 24 hours for a user's referrals.",
      *     operationId="getSubUsersCapitalDaily",
