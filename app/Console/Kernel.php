@@ -47,6 +47,8 @@ class Kernel extends ConsoleKernel
                 ->appendOutputTo(storage_path('logs/check-expired.log'));
 
         $schedule->job(new CalculateDailyBonusJob)->daily();
+        $schedule->command('capital:store-daily')->dailyAt('23:59');
+
     }
 
     /**
