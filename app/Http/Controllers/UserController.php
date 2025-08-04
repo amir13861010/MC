@@ -263,40 +263,53 @@ class UserController extends Controller
         ]);
     }
 
-    /**
-     * @OA\Get(
-     *     path="/api/users/{user_id}/sub-users-capital",
-     *     summary="Get total active capital of all sub-users recursively, the 5% bonus value, and sub-users list",
-     *     tags={"User"},
-     *     @OA\Parameter(
-     *         name="user_id",
-     *         in="path",
-     *         required=true,
-     *         description="User ID to calculate sub-users' capital for",
-     *         @OA\Schema(type="string", example="MC123456")
-     *     ),
-     *     @OA\Response(
-     *         response=200,
-     *         description="Total sub-users capital, 5% bonus value, and sub-users list",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="user_id", type="string"),
-     *             @OA\Property(property="total_sub_users_capital", type="number", format="float"),
-     *             @OA\Property(property="bonus_5_percent", type="number", format="float"),
-     *             @OA\Property(property="sub_users_count", type="integer"),
-     *             @OA\Property(property="new_users_24h", type="integer"),
-     *             @OA\Property(property="sub_users", type="array", @OA\Items(
-     *                 @OA\Property(property="user_id", type="string"),
-     *                 @OA\Property(property="name", type="string"),
-     *                 @OA\Property(property="email", type="string"),
-     *                 @OA\Property(property="registration_date", type="string", format="date-time"),
-     *                 @OA\Property(property="active_capital", type="number", format="float"),
-     *                 @OA\Property(property="is_new_24h", type="boolean")
-     *             ))
-     *         )
-     *     ),
-     *     @OA\Response(response=404, description="User not found")
-     * )
-     */
+  /**
+ * @OA\Get(
+ *     path="/api/users/{user_id}/sub-users-capital",
+ *     summary="Get total active capital of all sub-users recursively, the 5% bonus value, and sub-users list",
+ *     tags={"User"},
+ *     @OA\Parameter(
+ *         name="user_id",
+ *         in="path",
+ *         required=true,
+ *         description="User ID to calculate sub-users' capital for",
+ *         @OA\Schema(type="string", example="MC123456")
+ *     ),
+ *     @OA\Parameter(
+ *         name="time_frame",
+ *         in="query",
+ *         required=false,
+ *         description="Time frame for filtering (24h, 7d, 30d, all)",
+ *         @OA\Schema(type="string", example="24h")
+ *     ),
+ *     @OA\Response(
+ *         response=200,
+ *         description="Total sub-users capital, 5% bonus value, and sub-users list",
+ *         @OA\JsonContent(
+ *             @OA\Property(property="user_id", type="string"),
+ *             @OA\Property(property="total_sub_users_capital", type="number", format="float"),
+ *             @OA\Property(property="bonus_5_percent", type="number", format="float"),
+ *             @OA\Property(property="sub_users_count", type="integer"),
+ *             @OA\Property(property="new_users_24h", type="integer"),
+ *             @OA\Property(property="daily_data", type="array", @OA\Items(
+ *                 @OA\Property(property="date", type="string", format="date"),
+ *                 @OA\Property(property="total_capital", type="number", format="float"),
+ *                 @OA\Property(property="bonus", type="number", format="float"),
+ *                 @OA\Property(property="new_users_count", type="integer")
+ *             )),
+ *             @OA\Property(property="sub_users", type="array", @OA\Items(
+ *                 @OA\Property(property="user_id", type="string"),
+ *                 @OA\Property(property="name", type="string"),
+ *                 @OA\Property(property="email", type="string"),
+ *                 @OA\Property(property="registration_date", type="string", format="date-time"),
+ *                 @OA\Property(property="active_capital", type="number", format="float"),
+ *                 @OA\Property(property="is_new_24h", type="boolean")
+ *             ))
+ *         )
+ *     ),
+ *     @OA\Response(response=404, description="User not found")
+ * )
+ */
     public function getSubUsersCapital($userId)
     {
         $user = User::where('user_id', $userId)->first();
