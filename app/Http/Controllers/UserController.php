@@ -263,7 +263,7 @@ class UserController extends Controller
         ]);
     }
 
-  /**
+/**
  * @OA\Get(
  *     path="/api/users/{user_id}/sub-users-capital",
  *     summary="Get total active capital of all sub-users recursively, the 5% bonus value, and sub-users list",
@@ -310,7 +310,7 @@ class UserController extends Controller
  *     @OA\Response(response=404, description="User not found")
  * )
  */
-    public function getSubUsersCapital($userId)
+public function getSubUsersDailyCapital($userId, Request $request)
     {
         $user = User::where('user_id', $userId)->first();
         if (!$user) {
