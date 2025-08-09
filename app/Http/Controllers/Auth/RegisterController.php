@@ -3,16 +3,16 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Mail\WelcomeEmail; // Add this import
 use App\Models\User;
 use App\Models\Voucher;
 use App\Models\UserHierarchyHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Tymon\JWTAuth\Facades\JWTAuth;
-use Illuminate\Support\Facades\Mail;
-
 
 /**
  * @OA\Tag(
@@ -150,7 +150,13 @@ class RegisterController extends Controller
         }
 
         // Send welcome email
-        Mail::to($user->email)->send(new WelcomeEmail($userId, $password));
+        try {
+            Mail::to($user->email)->send(new WelcomeEmail($userId, $password));
+        } catch (\Exception $e) {
+            // Log the error for debugging
+            \Log::error('Failed to send welcome email: ' . $e->getMessage());
+            // Continue with registration even if email fails
+        }
 
         $token = JWTAuth::fromUser($user);
 
@@ -163,4 +169,4 @@ class RegisterController extends Controller
             'token' => $token
         ]);
     }
-} 
+}
