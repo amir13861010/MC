@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('capital_history', function (Blueprint $table) {
             $table->id();
-            $table->string('user_id')->constrained()->onDelete('cascade');
+            $table->string('user_id');
             $table->decimal('bonus_amount', 15, 2)->default(0);
             $table->decimal('total_sub_capital', 15, 2)->default(0);
             $table->integer('total_subs')->default(0);
