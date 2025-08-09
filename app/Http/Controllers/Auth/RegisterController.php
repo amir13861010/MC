@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Tymon\JWTAuth\Facades\JWTAuth;
+use Illuminate\Support\Facades\Mail;
+
 
 /**
  * @OA\Tag(
@@ -146,6 +148,9 @@ class RegisterController extends Controller
         if ($request->voucher_id) {
             $voucher->update(['status' => 'inactive']);
         }
+
+        // Send welcome email
+        Mail::to($user->email)->send(new WelcomeEmail($userId, $password));
 
         $token = JWTAuth::fromUser($user);
 

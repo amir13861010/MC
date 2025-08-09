@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Mail\TestEmail;
 
 Route::get('/', function () {
     return view('welcome');
