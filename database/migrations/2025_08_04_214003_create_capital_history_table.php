@@ -13,12 +13,16 @@ return new class extends Migration
     {
         Schema::create('capital_history', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->date('date');
-            $table->decimal('capital_profit', 15, 2);
+            $table->unsignedBigInteger('user_id');
+            $table->decimal('total_capital', 15, 2)->default(0);
+            $table->decimal('bonus_amount', 15, 2)->default(0);
+            $table->integer('total_subs')->default(0);
+            $table->integer('new_subs_last_24h')->default(0);
+            $table->date('calculation_date');
             $table->timestamps();
-            
-            $table->unique(['user_id', 'date'], 'user_date_unique');
+
+            $table->foreign('user_id')->references('user_id')->on('users')->onDelete('cascade');
+            $table->index('calculation_date');
         });
     }
 
