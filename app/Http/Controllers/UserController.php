@@ -58,9 +58,9 @@ public function getSubUsersCapitalDaily($userId)
 
     // دریافت تاریخچه سرمایه از جدول capital_history
     $capitalHistory = CapitalHistory::where('user_id', $userId)
-        ->orderBy('calculation_date', 'desc')
+        ->orderBy('created_at', 'desc')
         ->get([
-            'calculation_date as date',
+            'created_at as date',
             'total_capital',
             'bonus_amount',
             'total_subs',
