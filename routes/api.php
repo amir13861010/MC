@@ -115,7 +115,7 @@ Route::get('/users/profile', [\App\Http\Controllers\UserController::class, 'prof
 Route::post('/users/btc-wallet', [\App\Http\Controllers\UserController::class, 'saveBtcWallet']);
 Route::post('/users/tron-wallet', [\App\Http\Controllers\UserController::class, 'saveTronWallet']);
 Route::get('/users/daily-registrations', [\App\Http\Controllers\UserController::class, 'getDailyRegistrations']);
-Route::get('/sub-users-capital-daily/{userId}', [UserController::class, 'getSubUsersCapitalDaily']);
+Route::get('/sub-users-capital-daily/{userId}', [\App\Http\Controllers\UserController::class, 'getSubUsersCapitalDaily']);
 // User Hierarchy History Routes
 Route::get('/users/{user_id}/hierarchy-history', [\App\Http\Controllers\UserController::class, 'getHierarchyHistory']);
 Route::get('/users/{user_id}/subordinates-history', [\App\Http\Controllers\UserController::class, 'getSubordinatesHistory']);

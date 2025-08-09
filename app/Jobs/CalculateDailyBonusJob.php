@@ -7,6 +7,8 @@ use Illuminate\Foundation\Queue\Queueable;
 use App\Models\User;
 use App\Models\Trade;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class CalculateDailyBonusJob implements ShouldQueue
 {
@@ -25,28 +27,49 @@ class CalculateDailyBonusJob implements ShouldQueue
      */
     public function handle(): void
     {
+        Log::info('Starting CalculateDailyBonusJob');
         // گرفتن همه کاربران
         $users = User::all();
+        Log::info('Total users to process: ' . $users->count());
+
         foreach ($users as $user) {
+            Log::info("Processing user: {$user->user_id}");
             $maxGeneration = $this->getMaxGenerationByLegs($user);
-            if ($maxGeneration === 0) continue;
+            Log::info("Max generation for user {$user->user_id}: {$maxGeneration}");
+
+            if ($maxGeneration === 0) {
+                Log::info("No active legs for user {$user->user_id}, skipping");
+                continue;
+            }
+
             $qualifiedSubs = $this->getQualifiedSubUsers($user, $maxGeneration);
+            Log::info("Found " . count($qualifiedSubs) . " qualified sub-users for user {$user->user_id}");
+
             $totalBonus = 0;
             foreach ($qualifiedSubs as $sub) {
-                $capital = $this->getUserActiveCapital($sub);
-                if ($capital > 0) {
-                    $totalBonus += $capital * 0.05;
+                $dailyProfit = $this->getUserDailyProfit($sub);
+                Log::info("Sub-user {$sub->user_id} daily profit: {$dailyProfit}");
+                if ($dailyProfit > 0) {
+                    $bonus = $dailyProfit * 0.05;
+                    $totalBonus += $bonus;
+                    Log::info("Bonus for sub-user {$sub->user_id}: {$bonus}");
                 }
             }
+
             if ($totalBonus > 0) {
+                Log::info("Total bonus for user {$user->user_id}: {$totalBonus}");
                 // افزایش gain_profit کاربر
                 DB::transaction(function () use ($user, $totalBonus) {
                     $user->gain_profit += $totalBonus;
                     $user->save();
-                    // می‌توان اینجا ثبت تراکنش بونوس را هم اضافه کرد
+                    Log::info("Updated gain_profit for user {$user->user_id} to {$user->gain_profit}");
+                    // ثبت تراکنش بونوس (اختیاری)
                 });
+            } else {
+                Log::info("No bonus calculated for user {$user->user_id}");
             }
         }
+        Log::info('Finished CalculateDailyBonusJob');
     }
 
     // تعیین تعداد نسل مجاز بر اساس فعال بودن Legها
@@ -76,11 +99,65 @@ class CalculateDailyBonusJob implements ShouldQueue
         return $subs;
     }
 
-    // گرفتن سرمایه فعال کاربر (جمع سرمایه Tradeهای فعال)
-    private function getUserActiveCapital($user)
+    private function getUserDailyProfit($user)
     {
-        return Trade::where('user_id', $user->user_id)
-            ->active()
-            ->sum(DB::raw('COALESCE(amount,0)'));
+        $today = now()->format('Y-m-d');
+        $totalDailyProfit = 0;
+        
+        // گرفتن معاملات فعال کاربر
+        $trades = Trade::where('user_id', $user->user_id)->active()->get();
+        
+        foreach ($trades as $trade) {
+            try {
+                // Check if trade file exists
+                if (!Storage::disk('local')->exists($trade->file_path)) {
+                    Log::warning("Trade file not found for user {$user->user_id}: {$trade->file_path}");
+                    continue;
+                }
+    
+                // Read and parse JSON file
+                $jsonContent = Storage::disk('local')->get($trade->file_path);
+                $tradeData = json_decode($jsonContent, true);
+    
+                if (!$tradeData || !isset($tradeData['data']['dailyReports'])) {
+                    Log::warning("Invalid trade data format for user {$user->user_id}");
+                    continue;
+                }
+    
+                // Find today's daily report
+                $todayReport = null;
+                foreach ($tradeData['data']['dailyReports'] as $report) {
+                    if ($report['date'] === $today) {
+                        $todayReport = $report;
+                        break;
+                    }
+                }
+    
+                if (!$todayReport || !isset($todayReport['dailyProfit'])) {
+                    Log::info("No daily report found for user {$user->user_id} on date {$today}");
+                    continue;
+                }
+    
+                // Calculate daily profit amount
+                $dailyProfitPercent = floatval($todayReport['dailyProfit']);
+                $depositBalance = floatval($user->deposit_balance);
+                $dailyProfitAmount = $depositBalance * ($dailyProfitPercent / 100);
+                
+                $totalDailyProfit += $dailyProfitAmount;
+                
+                Log::info("Daily profit calculated for user {$user->user_id}", [
+                    'trade_id' => $trade->id,
+                    'daily_profit_percent' => $dailyProfitPercent,
+                    'deposit_balance' => $depositBalance,
+                    'daily_profit_amount' => $dailyProfitAmount
+                ]);
+    
+            } catch (\Exception $e) {
+                Log::error("Error processing trade {$trade->id} for user {$user->user_id}: " . $e->getMessage());
+                continue;
+            }
+        }
+        
+        return $totalDailyProfit;
     }
 }

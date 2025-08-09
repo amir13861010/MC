@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Models\Transfer;
+use App\Models\CapitalHistory;
 use App\Models\UserHierarchyHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
