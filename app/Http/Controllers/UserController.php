@@ -11,103 +11,64 @@ use Illuminate\Support\Facades\DB;
 
 class UserController extends Controller
 {
-    /**
-     * @OA\Get(
-     *     path="/api/sub-users-capital-daily/{userId}",
-     *     summary="Get daily capital report for sub-users",
-     *     description="Returns a daily report of capital, bonus, sub-users count, and new users in the last 24 hours for a user's referrals.",
-     *     operationId="getSubUsersCapitalDaily",
-     *     tags={"Users"},
-     *     @OA\Parameter(
-     *         name="userId",
-     *         in="path",
-     *         description="ID of the user to get the sub-users capital report for",
-     *         required=true,
-     *         @OA\Schema(type="string")
-     *     ),
-     *     @OA\Response(
-     *         response=200,
-     *         description="Successful response with daily capital report",
-     *         @OA\JsonContent(
-     *             type="array",
-     *             @OA\Items(
-     *                 @OA\Property(property="date", type="string", format="date", example="2025-01-01"),
-     *                 @OA\Property(property="total_sub_users_capital", type="number", format="float", example=50.00),
-     *                 @OA\Property(property="bonus_5_percent", type="number", format="float", example=2.50),
-     *                 @OA\Property(property="sub_users_count", type="integer", example=5),
-     *                 @OA\Property(property="new_users_24h", type="integer", example=0)
-     *             )
-     *         )
-     *     ),
-     *     @OA\Response(
-     *         response=404,
-     *         description="User not found",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="message", type="string", example="User not found")
-     *         )
-     *     )
-     * )
-     */
-    public function getSubUsersCapitalDaily($userId)
-    {
-        $user = User::where('user_id', $userId)->first();
-        if (!$user) {
-            return response()->json(['message' => 'User not found'], 404);
-        }
-
-        // Recursive function to get all sub-users
-        $getAllSubUsers = function($user) use (&$getAllSubUsers) {
-            $subs = [];
-            foreach ($user->referrals as $ref) {
-                $subs[] = $ref;
-                $subs = array_merge($subs, $getAllSubUsers($ref));
-            }
-            return $subs;
-        };
-
-        $subUsers = $getAllSubUsers($user);
-        $subUserIds = array_column($subUsers, 'user_id');
-
-        // Get capital history for sub-users, grouped by date
-        $capitalHistory = CapitalHistory::whereIn('user_id', $subUserIds)
-            ->select('date', 'user_id', 'capital_profit')
-            ->get()
-            ->groupBy('date');
-
-        // Prepare response
-        $response = [];
-        foreach ($capitalHistory as $date => $records) {
-            $totalCapital = 0;
-            $subUsersOnDate = [];
-            $newUsers24h = 0;
-
-            foreach ($records as $record) {
-                $totalCapital += $record->capital_profit;
-                $subUsersOnDate[] = $record->user_id;
-
-                // Check if user is new on this date
-                $subUser = collect($subUsers)->firstWhere('user_id', $record->user_id);
-                if ($subUser && $subUser->created_at->startOfDay()->format('Y-m-d') === $date) {
-                    $newUsers24h++;
-                }
-            }
-
-            $response[] = [
-                'date' => $date,
-                'total_sub_users_capital' => $totalCapital,
-                'bonus_5_percent' => $totalCapital * 0.05,
-                'sub_users_count' => count(array_unique($subUsersOnDate)),
-                'new_users_24h' => $newUsers24h,
-            ];
-        }
-
-        // Sort by date
-        usort($response, function ($a, $b) {
-            return strtotime($a['date']) - strtotime($b['date']);
-        });
-
-        return response()->json($response);
+/**
+ * @OA\Get(
+ *     path="/api/sub-users-capital-daily/{userId}",
+ *     summary="Get daily capital report for sub-users",
+ *     description="Returns a daily report of capital, bonus, sub-users count, and new users in the last 24 hours for a user's referrals.",
+ *     operationId="getSubUsersCapitalDaily",
+ *     tags={"Users"},
+ *     @OA\Parameter(
+ *         name="userId",
+ *         in="path",
+ *         description="ID of the user to get the sub-users capital report for",
+ *         required=true,
+ *         @OA\Schema(type="string")
+ *     ),
+ *     @OA\Response(
+ *         response=200,
+ *         description="Successful response with daily capital report",
+ *         @OA\JsonContent(
+ *             type="array",
+ *             @OA\Items(
+ *                 @OA\Property(property="date", type="string", format="date", example="2025-01-01"),
+ *                 @OA\Property(property="total_capital", type="number", format="float", example=5000.00),
+ *                 @OA\Property(property="bonus_amount", type="number", format="float", example=250.00),
+ *                 @OA\Property(property="total_subs", type="integer", example=10),
+ *                 @OA\Property(property="new_subs_last_24h", type="integer", example=2)
+ *             )
+ *         )
+ *     ),
+ *     @OA\Response(
+ *         response=404,
+ *         description="User not found",
+ *         @OA\JsonContent(
+ *             @OA\Property(property="message", type="string", example="User not found")
+ *         )
+ *     )
+ * )
+ */
+public function getSubUsersCapitalDaily($userId)
+{
+    $user = User::where('user_id', $userId)->first();
+    
+    if (!$user) {
+        return response()->json(['message' => 'User not found'], 404);
     }
+
+    // دریافت تاریخچه سرمایه از جدول capital_history
+    $capitalHistory = CapitalHistory::where('user_id', $userId)
+        ->orderBy('calculation_date', 'desc')
+        ->get([
+            'calculation_date as date',
+            'total_capital',
+            'bonus_amount',
+            'total_subs',
+            'new_subs_last_24h'
+        ]);
+
+    return response()->json($capitalHistory);
+}
     /**
      * @OA\Post(
      *     path="/api/users/transfer-capital-to-gain",
