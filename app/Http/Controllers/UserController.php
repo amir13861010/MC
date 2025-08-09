@@ -32,8 +32,8 @@ class UserController extends Controller
  *             type="array",
  *             @OA\Items(
  *                 @OA\Property(property="date", type="string", format="date", example="2025-01-01"),
- *                 @OA\Property(property="total_capital", type="number", format="float", example=5000.00),
- *                 @OA\Property(property="bonus_amount", type="number", format="float", example=250.00),
+ *                 @OA\Property(property="bonus_amount", type="number", format="float", example=5000.00),
+ *                 @OA\Property(property="total_sub_capital", type="number", format="float", example=250.00),
  *                 @OA\Property(property="total_subs", type="integer", example=10),
  *                 @OA\Property(property="new_subs_last_24h", type="integer", example=2)
  *             )
@@ -61,8 +61,8 @@ public function getSubUsersCapitalDaily($userId)
         ->orderBy('created_at', 'desc')
         ->get([
             'created_at as date',
-            'total_capital',
             'bonus_amount',
+            'total_sub_capital',
             'total_subs',
             'new_subs_last_24h'
         ]);
