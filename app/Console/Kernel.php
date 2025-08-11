@@ -46,8 +46,11 @@ class Kernel extends ConsoleKernel
                 ->withoutOverlapping()
                 ->appendOutputTo(storage_path('logs/check-expired.log'));
 
-        $schedule->job(new CalculateDailyBonusJob)->daily();
-        $schedule->command('capital:store-daily')->dailyAt('23:59');
+        $schedule->command('bonus:calculate-daily')
+                ->daily()
+                ->at('02:00')
+                ->withoutOverlapping()
+                ->appendOutputTo(storage_path('logs/daily-bonus.log'));
 
     }
 

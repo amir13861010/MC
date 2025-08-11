@@ -1,49 +1,45 @@
 <?php
 
-namespace App\Jobs;
+namespace App\Console\Commands;
 
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Console\Command;
 use App\Models\User;
 use App\Models\Trade;
-use App\Models\CapitalHistory; // Import the new model (you need to create this model as well)
+use App\Models\CapitalHistory;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
-class CalculateDailyBonusJob implements ShouldQueue
+class CalculateDailyBonus extends Command
 {
-    use Queueable;
+    protected $signature = 'bonus:calculate-daily';
+    protected $description = 'Calculate daily bonus for all users';
 
-    /**
-     * Create a new job instance.
-     */
-    public function __construct()
-    {
-        //
-    }
-
-    /**
-     * Execute the job.
-     */
     public function handle(): void
     {
-        Log::info('Starting CalculateDailyBonusJob');
-        // گرفتن همه کاربران
+        $this->info('Starting CalculateDailyBonus Command');
+        Log::info('Starting CalculateDailyBonus Command');
+
         $users = User::all();
+        $this->info('Total users to process: ' . $users->count());
         Log::info('Total users to process: ' . $users->count());
 
         foreach ($users as $user) {
+            $this->info("Processing user: {$user->user_id}");
             Log::info("Processing user: {$user->user_id}");
+
             $maxGeneration = $this->getMaxGenerationByLegs($user);
+            $this->info("Max generation for user {$user->user_id}: {$maxGeneration}");
             Log::info("Max generation for user {$user->user_id}: {$maxGeneration}");
 
             if ($maxGeneration === 0) {
+                $this->info("No active legs for user {$user->user_id}, skipping");
                 Log::info("No active legs for user {$user->user_id}, skipping");
                 continue;
             }
 
             $qualifiedSubs = $this->getQualifiedSubUsers($user, $maxGeneration);
+            $this->info("Found " . count($qualifiedSubs) . " qualified sub-users for user {$user->user_id}");
             Log::info("Found " . count($qualifiedSubs) . " qualified sub-users for user {$user->user_id}");
 
             $totalBonus = 0;
@@ -53,17 +49,18 @@ class CalculateDailyBonusJob implements ShouldQueue
 
             foreach ($qualifiedSubs as $sub) {
                 $dailyProfit = $this->getUserDailyProfit($sub);
+                $this->info("Sub-user {$sub->user_id} daily profit: {$dailyProfit}");
                 Log::info("Sub-user {$sub->user_id} daily profit: {$dailyProfit}");
+
                 if ($dailyProfit > 0) {
                     $bonus = $dailyProfit * 0.05;
                     $totalBonus += $bonus;
+                    $this->info("Bonus for sub-user {$sub->user_id}: {$bonus}");
                     Log::info("Bonus for sub-user {$sub->user_id}: {$bonus}");
                 }
 
-                // Calculate total sub capital
                 $totalSubCapital += floatval($sub->capital_profit);
 
-                // Count new subs in last 24 hours
                 if ($sub->created_at >= $twentyFourHoursAgo) {
                     $newSubsLast24h++;
                 }
@@ -72,14 +69,15 @@ class CalculateDailyBonusJob implements ShouldQueue
             $totalSubs = count($qualifiedSubs);
 
             if ($totalBonus > 0) {
+                $this->info("Total bonus for user {$user->user_id}: {$totalBonus}");
                 Log::info("Total bonus for user {$user->user_id}: {$totalBonus}");
-                // افزایش gain_profit کاربر و ذخیره تاریخچه
+
                 DB::transaction(function () use ($user, $totalBonus, $totalSubCapital, $totalSubs, $newSubsLast24h) {
                     $user->gain_profit += $totalBonus;
                     $user->save();
+                    $this->info("Updated gain_profit for user {$user->user_id} to {$user->gain_profit}");
                     Log::info("Updated gain_profit for user {$user->user_id} to {$user->gain_profit}");
 
-                    // ذخیره در جدول capital_history
                     CapitalHistory::create([
                         'user_id' => $user->user_id,
                         'bonus_amount' => $totalBonus,
@@ -87,13 +85,13 @@ class CalculateDailyBonusJob implements ShouldQueue
                         'total_subs' => $totalSubs,
                         'new_subs_last_24h' => $newSubsLast24h,
                     ]);
+                    $this->info("Saved capital history for user {$user->user_id}");
                     Log::info("Saved capital history for user {$user->user_id}");
-
-                    // ثبت تراکنش بونوس (اختیاری)
                 });
             } else {
+                $this->info("No bonus calculated for user {$user->user_id}");
                 Log::info("No bonus calculated for user {$user->user_id}");
-                // حتی اگر بونوس صفر باشد، تاریخچه را ذخیره می‌کنیم (اگر بخواهید، иначе می‌توانید این بخش را کامنت کنید)
+
                 DB::transaction(function () use ($user, $totalSubCapital, $totalSubs, $newSubsLast24h) {
                     CapitalHistory::create([
                         'user_id' => $user->user_id,
@@ -102,17 +100,18 @@ class CalculateDailyBonusJob implements ShouldQueue
                         'total_subs' => $totalSubs,
                         'new_subs_last_24h' => $newSubsLast24h,
                     ]);
+                    $this->info("Saved capital history (with zero bonus) for user {$user->user_id}");
                     Log::info("Saved capital history (with zero bonus) for user {$user->user_id}");
                 });
             }
         }
-        Log::info('Finished CalculateDailyBonusJob');
+
+        $this->info('Finished CalculateDailyBonus Command');
+        Log::info('Finished CalculateDailyBonus Command');
     }
 
-    // تعیین تعداد نسل مجاز بر اساس فعال بودن Legها
     private function getMaxGenerationByLegs($user)
     {
-        // گرفتن بالانس هر Leg
         $balances = app(\App\Http\Controllers\LegBalanceController::class)->getLegBalances($user->user_id)->getData(true);
         $activeA = $balances['leg_a_balance'] > 0;
         $activeB = $balances['leg_b_balance'] > 0;
@@ -123,7 +122,6 @@ class CalculateDailyBonusJob implements ShouldQueue
         return 0;
     }
 
-    // گرفتن زیرمجموعه‌های واجد شرایط تا n نسل
     private function getQualifiedSubUsers($user, $maxGen, $currentGen = 1)
     {
         $subs = [];
@@ -140,28 +138,26 @@ class CalculateDailyBonusJob implements ShouldQueue
     {
         $today = now()->format('Y-m-d');
         $totalDailyProfit = 0;
-        
-        // گرفتن معاملات فعال کاربر
+
         $trades = Trade::where('user_id', $user->user_id)->active()->get();
-        
+
         foreach ($trades as $trade) {
             try {
-                // Check if trade file exists
                 if (!Storage::disk('local')->exists($trade->file_path)) {
+                    $this->warn("Trade file not found for user {$user->user_id}: {$trade->file_path}");
                     Log::warning("Trade file not found for user {$user->user_id}: {$trade->file_path}");
                     continue;
                 }
-    
-                // Read and parse JSON file
+
                 $jsonContent = Storage::disk('local')->get($trade->file_path);
                 $tradeData = json_decode($jsonContent, true);
-    
+
                 if (!$tradeData || !isset($tradeData['data']['dailyReports'])) {
+                    $this->warn("Invalid trade data format for user {$user->user_id}");
                     Log::warning("Invalid trade data format for user {$user->user_id}");
                     continue;
                 }
-    
-                // Find today's daily report
+
                 $todayReport = null;
                 foreach ($tradeData['data']['dailyReports'] as $report) {
                     if ($report['date'] === $today) {
@@ -169,32 +165,39 @@ class CalculateDailyBonusJob implements ShouldQueue
                         break;
                     }
                 }
-    
+
                 if (!$todayReport || !isset($todayReport['dailyProfit'])) {
+                    $this->info("No daily report found for user {$user->user_id} on date {$today}");
                     Log::info("No daily report found for user {$user->user_id} on date {$today}");
                     continue;
                 }
-    
-                // Calculate daily profit amount
+
                 $dailyProfitPercent = floatval($todayReport['dailyProfit']);
                 $depositBalance = floatval($user->capital_profit);
                 $dailyProfitAmount = $depositBalance * ($dailyProfitPercent / 100);
-                
+
                 $totalDailyProfit += $dailyProfitAmount;
-                
+
+                $this->info("Daily profit calculated for user {$user->user_id}", [
+                    'trade_id' => $trade->id,
+                    'daily_profit_percent' => $dailyProfitPercent,
+                    'capital_profit' => $depositBalance,
+                    'daily_profit_amount' => $dailyProfitAmount
+                ]);
                 Log::info("Daily profit calculated for user {$user->user_id}", [
                     'trade_id' => $trade->id,
                     'daily_profit_percent' => $dailyProfitPercent,
                     'capital_profit' => $depositBalance,
                     'daily_profit_amount' => $dailyProfitAmount
                 ]);
-    
+
             } catch (\Exception $e) {
+                $this->error("Error processing trade {$trade->id} for user {$user->user_id}: " . $e->getMessage());
                 Log::error("Error processing trade {$trade->id} for user {$user->user_id}: " . $e->getMessage());
                 continue;
             }
         }
-        
+
         return $totalDailyProfit;
     }
 }
