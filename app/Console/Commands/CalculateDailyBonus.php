@@ -178,12 +178,23 @@ class CalculateDailyBonus extends Command
 
                 $totalDailyProfit += $dailyProfitAmount;
 
-                $this->info("Daily profit calculated for user {$user->user_id}", [
+                // Fixed: Convert array to string for console output (or remove if not needed)
+                $details = json_encode([
                     'trade_id' => $trade->id,
                     'daily_profit_percent' => $dailyProfitPercent,
                     'capital_profit' => $depositBalance,
                     'daily_profit_amount' => $dailyProfitAmount
                 ]);
+                $this->info("Daily profit calculated for user {$user->user_id}: {$details}");
+
+                // Alternative: Separate lines for each detail
+                // $this->info("Daily profit calculated for user {$user->user_id}");
+                // $this->info(" - Trade ID: {$trade->id}");
+                // $this->info(" - Daily Profit Percent: {$dailyProfitPercent}");
+                // $this->info(" - Capital Profit: {$depositBalance}");
+                // $this->info(" - Daily Profit Amount: {$dailyProfitAmount}");
+
+                // The Log call remains unchanged (it supports arrays)
                 Log::info("Daily profit calculated for user {$user->user_id}", [
                     'trade_id' => $trade->id,
                     'daily_profit_percent' => $dailyProfitPercent,
