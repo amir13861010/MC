@@ -24,9 +24,10 @@ class CalculateDailyBonus extends Command
         $this->info("Processing date: {$today}");
         Log::info("Processing date: {$today}");
 
-        $users = User::where('status', 'active')->get();
-        $this->info("Found {$users->count()} active users to process");
-        Log::info("Found {$users->count()} active users to process");
+        // حذف شرط where('status', 'active')
+        $users = User::all();
+        $this->info("Found {$users->count()} users to process");
+        Log::info("Found {$users->count()} users to process");
 
         foreach ($users as $user) {
             try {
@@ -94,7 +95,8 @@ class CalculateDailyBonus extends Command
     {
         $subs = [];
         
-        foreach ($user->referrals()->where('status', 'active')->get() as $ref) {
+        // حذف شرط where('status', 'active')
+        foreach ($user->referrals()->get() as $ref) {
             $subs[] = $ref;
             
             if ($currentGen < $maxGen) {
@@ -121,7 +123,7 @@ class CalculateDailyBonus extends Command
             $todayCapital = $this->calculateSubUserTodayCapital($sub, $today);
             
             if ($dailyProfit > 0) {
-                $bonus = $dailyProfit * 0.05; // 5% bonus
+                $bonus = round($dailyProfit * 0.05, 2); // 5% bonus rounded to 2 decimals
                 $totalBonus += $bonus;
                 $this->info("Sub-user {$sub->user_id} bonus: {$bonus} (from profit: {$dailyProfit})");
             }

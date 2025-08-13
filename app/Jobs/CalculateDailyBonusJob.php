@@ -18,10 +18,7 @@ class CalculateDailyBonusJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    // تعداد تلاش‌های مجاز برای اجرای Job
     public $tries = 3;
-
-    // زمان انتظار قبل از تلاش مجدد (ثانیه)
     public $backoff = 60;
 
     /**
@@ -34,8 +31,8 @@ class CalculateDailyBonusJob implements ShouldQueue
         $today = now()->format('Y-m-d');
         Log::channel('bonus')->info("[CalculateDailyBonusJob] Processing date: {$today}");
         
-        // فقط کاربران فعال را پردازش می‌کنیم
-        $users = User::where('status', 'active')->cursor();
+        // پردازش همه کاربران بدون فیلتر status
+        $users = User::cursor();
         
         foreach ($users as $user) {
             try {
@@ -98,7 +95,8 @@ class CalculateDailyBonusJob implements ShouldQueue
     {
         $subs = [];
         
-        foreach ($user->referrals()->where('status', 'active')->cursor() as $ref) {
+        // حذف شرط where('status', 'active')
+        foreach ($user->referrals()->cursor() as $ref) {
             $subs[] = $ref;
             
             if ($currentGen < $maxGen) {
@@ -125,7 +123,7 @@ class CalculateDailyBonusJob implements ShouldQueue
             $todayCapital = $this->calculateTodayCapital($sub, $today);
             
             if ($dailyProfit > 0) {
-                $bonus = round($dailyProfit * 0.05, 2); // 5% bonus rounded to 2 decimals
+                $bonus = round($dailyProfit * 0.05, 2);
                 $totalBonus += $bonus;
                 Log::channel('bonus')->info("[CalculateDailyBonusJob] Calculated {$bonus} bonus from sub {$sub->id} (profit: {$dailyProfit})");
             }
