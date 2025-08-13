@@ -149,7 +149,6 @@ class CalculateDailyBonusJob implements ShouldQueue
     {
         $totalProfit = 0;
         
-        // حذف فیلتر status از کوئری trades
         $trades = Trade::where('user_id', $user->id)->cursor();
 
         foreach ($trades as $trade) {
@@ -162,16 +161,18 @@ class CalculateDailyBonusJob implements ShouldQueue
                 $jsonContent = Storage::disk('local')->get($trade->file_path);
                 $tradeData = json_decode($jsonContent, true);
 
-                if (!$tradeData || !isset($tradeData['data']['dailyReports'])) {
-                    Log::channel('bonus')->warning("[CalculateDailyBonusJob] Invalid trade data for trade {$trade->id}");
+                // تغییر اصلی: اصلاح مسیر دسترسی به dailyReports
+                if (!$tradeData || !isset($tradeData['result']['data']['dailyReports'])) {
+                    Log::channel('bonus')->warning("[CalculateDailyBonusJob] Invalid trade data structure for trade {$trade->id}");
                     continue;
                 }
 
-                foreach ($tradeData['data']['dailyReports'] as $report) {
+                foreach ($tradeData['result']['data']['dailyReports'] as $report) {
                     if ($report['date'] === $date && isset($report['dailyProfit'])) {
                         $profitPercent = floatval($report['dailyProfit']);
                         $profitAmount = $trade->amount * ($profitPercent / 100);
                         $totalProfit += $profitAmount;
+                        Log::channel('bonus')->info("[CalculateDailyBonusJob] Found profit for date {$date}: {$profitAmount} (from trade {$trade->id})");
                     }
                 }
             } catch (\Exception $e) {
@@ -187,7 +188,6 @@ class CalculateDailyBonusJob implements ShouldQueue
     {
         $totalCapital = 0;
         
-        // حذف فیلتر status از کوئری trades
         $trades = Trade::where('user_id', $user->id)->cursor();
 
         foreach ($trades as $trade) {
@@ -199,13 +199,17 @@ class CalculateDailyBonusJob implements ShouldQueue
                 $jsonContent = Storage::disk('local')->get($trade->file_path);
                 $tradeData = json_decode($jsonContent, true);
 
-                if (!$tradeData || !isset($tradeData['data']['dailyReports'])) {
+                // تغییر اصلی: اصلاح مسیر دسترسی به dailyReports
+                if (!$tradeData || !isset($tradeData['result']['data']['dailyReports'])) {
                     continue;
                 }
 
-                foreach ($tradeData['data']['dailyReports'] as $report) {
+                foreach ($tradeData['result']['data']['dailyReports'] as $report) {
                     if ($report['date'] === $date) {
-                        $totalCapital += $trade->amount;
+                        // محاسبه مجموع سرمایه از تمام تریدهای آن روز
+                        foreach ($report['trades'] as $tradeData) {
+                            $totalCapital += $tradeData['capital'];
+                        }
                         break;
                     }
                 }

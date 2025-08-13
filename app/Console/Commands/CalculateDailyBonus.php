@@ -121,7 +121,7 @@ class CalculateDailyBonus extends Command
             $todayCapital = $this->calculateSubUserTodayCapital($sub, $today);
             
             if ($dailyProfit > 0) {
-                $bonus = round($dailyProfit * 0.05, 2); // 5% bonus rounded to 2 decimals
+                $bonus = round($dailyProfit * 0.05, 2);
                 $totalBonus += $bonus;
                 $this->info("Sub-user {$sub->user_id} bonus: {$bonus} (from profit: {$dailyProfit})");
             }
@@ -148,7 +148,6 @@ class CalculateDailyBonus extends Command
     protected function calculateSubUserDailyProfit(User $user, string $date): float
     {
         $totalProfit = 0;
-        // حذف شرط where('status', 'active')
         $trades = Trade::where('user_id', $user->user_id)->get();
 
         foreach ($trades as $trade) {
@@ -161,12 +160,13 @@ class CalculateDailyBonus extends Command
                 $jsonContent = Storage::disk('local')->get($trade->file_path);
                 $tradeData = json_decode($jsonContent, true);
 
-                if (!$tradeData || !isset($tradeData['data']['dailyReports'])) {
+                // تغییر اصلی: اصلاح مسیر دسترسی به dailyReports
+                if (!$tradeData || !isset($tradeData['result']['data']['dailyReports'])) {
                     $this->warn("Invalid trade data format for trade ID: {$trade->id}");
                     continue;
                 }
 
-                foreach ($tradeData['data']['dailyReports'] as $report) {
+                foreach ($tradeData['result']['data']['dailyReports'] as $report) {
                     if ($report['date'] === $date && isset($report['dailyProfit'])) {
                         $profitPercent = floatval($report['dailyProfit']);
                         $profitAmount = $trade->amount * ($profitPercent / 100);
@@ -187,7 +187,6 @@ class CalculateDailyBonus extends Command
     protected function calculateSubUserTodayCapital(User $user, string $date): float
     {
         $totalCapital = 0;
-        // حذف شرط where('status', 'active')
         $trades = Trade::where('user_id', $user->user_id)->get();
 
         foreach ($trades as $trade) {
@@ -199,14 +198,17 @@ class CalculateDailyBonus extends Command
                 $jsonContent = Storage::disk('local')->get($trade->file_path);
                 $tradeData = json_decode($jsonContent, true);
 
-                if (!$tradeData || !isset($tradeData['data']['dailyReports'])) {
+                // تغییر اصلی: اصلاح مسیر دسترسی به dailyReports
+                if (!$tradeData || !isset($tradeData['result']['data']['dailyReports'])) {
                     continue;
                 }
 
-                // Check if trade has activity today
-                foreach ($tradeData['data']['dailyReports'] as $report) {
+                foreach ($tradeData['result']['data']['dailyReports'] as $report) {
                     if ($report['date'] === $date) {
-                        $totalCapital += $trade->amount;
+                        // محاسبه مجموع سرمایه از تمام تریدهای آن روز
+                        foreach ($report['trades'] as $tradeData) {
+                            $totalCapital += $tradeData['capital'];
+                        }
                         break;
                     }
                 }
