@@ -1,0 +1,5 @@
+# Daily bonus calculation at 23:59
+59 23 * * * cd /var/www/project/ && php artisan bonus:calculate-daily >> /dev/null 2>&1
+
+# Alternative: Using the shell script
+# 59 23 * * * /home/amir/Documents/bm/cron_daily_bonus.sh >> /dev/null 2>&1 

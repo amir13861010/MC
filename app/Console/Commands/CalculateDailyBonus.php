@@ -20,6 +20,10 @@ class CalculateDailyBonus extends Command
         $this->info('Starting CalculateDailyBonus Command');
         Log::info('Starting CalculateDailyBonus Command');
 
+        $today = now()->format('Y-m-d');
+        $this->info("Calculating bonus for date: {$today}");
+        Log::info("Calculating bonus for date: {$today}");
+
         $users = User::all();
         $this->info('Total users to process: ' . $users->count());
         Log::info('Total users to process: ' . $users->count());
@@ -48,7 +52,7 @@ class CalculateDailyBonus extends Command
             $twentyFourHoursAgo = now()->subDay();
 
             foreach ($qualifiedSubs as $sub) {
-                $dailyProfit = $this->getUserDailyProfit($sub);
+                $dailyProfit = $this->getUserDailyProfit($sub, $today);
                 $this->info("Sub-user {$sub->user_id} daily profit: {$dailyProfit}");
                 Log::info("Sub-user {$sub->user_id} daily profit: {$dailyProfit}");
 
@@ -59,7 +63,9 @@ class CalculateDailyBonus extends Command
                     Log::info("Bonus for sub-user {$sub->user_id}: {$bonus}");
                 }
 
-                $totalSubCapital += floatval($sub->capital_profit);
+                // Calculate capital only for today's active trades
+                $todayCapital = $this->getUserTodayCapital($sub, $today);
+                $totalSubCapital += $todayCapital;
 
                 if ($sub->created_at >= $twentyFourHoursAgo) {
                     $newSubsLast24h++;
@@ -72,7 +78,7 @@ class CalculateDailyBonus extends Command
                 $this->info("Total bonus for user {$user->user_id}: {$totalBonus}");
                 Log::info("Total bonus for user {$user->user_id}: {$totalBonus}");
 
-                DB::transaction(function () use ($user, $totalBonus, $totalSubCapital, $totalSubs, $newSubsLast24h) {
+                DB::transaction(function () use ($user, $totalBonus, $totalSubCapital, $totalSubs, $newSubsLast24h, $today) {
                     $user->gain_profit += $totalBonus;
                     $user->save();
                     $this->info("Updated gain_profit for user {$user->user_id} to {$user->gain_profit}");
@@ -80,6 +86,7 @@ class CalculateDailyBonus extends Command
 
                     CapitalHistory::create([
                         'user_id' => $user->user_id,
+                        'calculation_date' => $today,
                         'bonus_amount' => $totalBonus,
                         'total_sub_capital' => $totalSubCapital,
                         'total_subs' => $totalSubs,
@@ -92,9 +99,10 @@ class CalculateDailyBonus extends Command
                 $this->info("No bonus calculated for user {$user->user_id}");
                 Log::info("No bonus calculated for user {$user->user_id}");
 
-                DB::transaction(function () use ($user, $totalSubCapital, $totalSubs, $newSubsLast24h) {
+                DB::transaction(function () use ($user, $totalSubCapital, $totalSubs, $newSubsLast24h, $today) {
                     CapitalHistory::create([
                         'user_id' => $user->user_id,
+                        'calculation_date' => $today,
                         'bonus_amount' => 0,
                         'total_sub_capital' => $totalSubCapital,
                         'total_subs' => $totalSubs,
@@ -134,9 +142,8 @@ class CalculateDailyBonus extends Command
         return $subs;
     }
 
-    private function getUserDailyProfit($user)
+    private function getUserDailyProfit($user, $date)
     {
-        $today = now()->format('Y-m-d');
         $totalDailyProfit = 0;
 
         $trades = Trade::where('user_id', $user->user_id)->active()->get();
@@ -160,15 +167,15 @@ class CalculateDailyBonus extends Command
 
                 $todayReport = null;
                 foreach ($tradeData['data']['dailyReports'] as $report) {
-                    if ($report['date'] === $today) {
+                    if ($report['date'] === $date) {
                         $todayReport = $report;
                         break;
                     }
                 }
 
                 if (!$todayReport || !isset($todayReport['dailyProfit'])) {
-                    $this->info("No daily report found for user {$user->user_id} on date {$today}");
-                    Log::info("No daily report found for user {$user->user_id} on date {$today}");
+                    $this->info("No daily report found for user {$user->user_id} on date {$date}");
+                    Log::info("No daily report found for user {$user->user_id} on date {$date}");
                     continue;
                 }
 
@@ -178,7 +185,6 @@ class CalculateDailyBonus extends Command
 
                 $totalDailyProfit += $dailyProfitAmount;
 
-                // Fixed: Convert array to string for console output (or remove if not needed)
                 $details = json_encode([
                     'trade_id' => $trade->id,
                     'daily_profit_percent' => $dailyProfitPercent,
@@ -187,14 +193,6 @@ class CalculateDailyBonus extends Command
                 ]);
                 $this->info("Daily profit calculated for user {$user->user_id}: {$details}");
 
-                // Alternative: Separate lines for each detail
-                // $this->info("Daily profit calculated for user {$user->user_id}");
-                // $this->info(" - Trade ID: {$trade->id}");
-                // $this->info(" - Daily Profit Percent: {$dailyProfitPercent}");
-                // $this->info(" - Capital Profit: {$depositBalance}");
-                // $this->info(" - Daily Profit Amount: {$dailyProfitAmount}");
-
-                // The Log call remains unchanged (it supports arrays)
                 Log::info("Daily profit calculated for user {$user->user_id}", [
                     'trade_id' => $trade->id,
                     'daily_profit_percent' => $dailyProfitPercent,
@@ -210,5 +208,48 @@ class CalculateDailyBonus extends Command
         }
 
         return $totalDailyProfit;
+    }
+
+    private function getUserTodayCapital($user, $date)
+    {
+        $totalTodayCapital = 0;
+
+        $trades = Trade::where('user_id', $user->user_id)->active()->get();
+
+        foreach ($trades as $trade) {
+            try {
+                if (!Storage::disk('local')->exists($trade->file_path)) {
+                    continue;
+                }
+
+                $jsonContent = Storage::disk('local')->get($trade->file_path);
+                $tradeData = json_decode($jsonContent, true);
+
+                if (!$tradeData || !isset($tradeData['data']['dailyReports'])) {
+                    continue;
+                }
+
+                // Check if this trade has activity for today
+                $hasTodayActivity = false;
+                foreach ($tradeData['data']['dailyReports'] as $report) {
+                    if ($report['date'] === $date) {
+                        $hasTodayActivity = true;
+                        break;
+                    }
+                }
+
+                // Only count capital if trade has activity today
+                if ($hasTodayActivity) {
+                    $totalTodayCapital += floatval($user->capital_profit);
+                }
+
+            } catch (\Exception $e) {
+                $this->error("Error processing trade {$trade->id} for user {$user->user_id}: " . $e->getMessage());
+                Log::error("Error processing trade {$trade->id} for user {$user->user_id}: " . $e->getMessage());
+                continue;
+            }
+        }
+
+        return $totalTodayCapital;
     }
 }

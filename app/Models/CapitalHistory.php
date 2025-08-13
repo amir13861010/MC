@@ -8,7 +8,7 @@ class CapitalHistory extends Model
 {
     protected $table = 'capital_history';
     
-    protected $fillable = ['user_id', 'bonus_amount', 'total_sub_capital','total_subs','new_subs_last_24h'];
+    protected $fillable = ['user_id', 'calculation_date', 'bonus_amount', 'total_sub_capital','total_subs','new_subs_last_24h'];
     
     public function user()
     {
