@@ -149,14 +149,14 @@ class CalculateDailyBonus extends Command
     {
         $totalProfit = 0;
         $trades = Trade::where('user_id', $user->user_id)
-                       ->where('is_valid', true)
+                       ->where('is_active', 1)
                        ->get();
 
         foreach ($trades as $trade) {
             try {
                 if (!Storage::disk('local')->exists($trade->file_path)) {
                     $this->warn("Trade file missing for trade ID: {$trade->id}");
-                    $this->markTradeAsInvalid($trade);
+                    $this->markTradeAsInactive($trade);
                     continue;
                 }
 
@@ -169,7 +169,7 @@ class CalculateDailyBonus extends Command
                     Log::debug("Trade ID {$trade->id} JSON content (truncated):", [
                         'content' => substr($jsonContent, 0, 1000)
                     ]);
-                    $this->markTradeAsInvalid($trade);
+                    $this->markTradeAsInactive($trade);
                     continue;
                 }
 
@@ -185,7 +185,7 @@ class CalculateDailyBonus extends Command
                         'dailyReports_exists' => isset($tradeData['result']['data']['dailyReports']),
                         'json_content' => substr($jsonContent, 0, 1000)
                     ]);
-                    $this->markTradeAsInvalid($trade);
+                    $this->markTradeAsInactive($trade);
                     continue;
                 }
 
@@ -211,7 +211,7 @@ class CalculateDailyBonus extends Command
             } catch (\Exception $e) {
                 $this->error("Error processing trade {$trade->id}: " . $e->getMessage());
                 Log::error("Error processing trade {$trade->id}: " . $e->getMessage(), ['exception' => $e]);
-                $this->markTradeAsInvalid($trade);
+                $this->markTradeAsInactive($trade);
                 continue;
             }
         }
@@ -223,14 +223,14 @@ class CalculateDailyBonus extends Command
     {
         $totalCapital = 0;
         $trades = Trade::where('user_id', $user->user_id)
-                       ->where('is_valid', true)
+                       ->where('is_active', 1)
                        ->get();
 
         foreach ($trades as $trade) {
             try {
                 if (!Storage::disk('local')->exists($trade->file_path)) {
                     $this->warn("Trade file missing for trade ID: {$trade->id}");
-                    $this->markTradeAsInvalid($trade);
+                    $this->markTradeAsInactive($trade);
                     continue;
                 }
 
@@ -243,7 +243,7 @@ class CalculateDailyBonus extends Command
                     Log::debug("Trade ID {$trade->id} JSON content (truncated):", [
                         'content' => substr($jsonContent, 0, 1000)
                     ]);
-                    $this->markTradeAsInvalid($trade);
+                    $this->markTradeAsInactive($trade);
                     continue;
                 }
 
@@ -259,7 +259,7 @@ class CalculateDailyBonus extends Command
                         'dailyReports_exists' => isset($tradeData['result']['data']['dailyReports']),
                         'json_content' => substr($jsonContent, 0, 1000)
                     ]);
-                    $this->markTradeAsInvalid($trade);
+                    $this->markTradeAsInactive($trade);
                     continue;
                 }
 
@@ -289,7 +289,7 @@ class CalculateDailyBonus extends Command
             } catch (\Exception $e) {
                 $this->error("Error processing trade {$trade->id}: " . $e->getMessage());
                 Log::error("Error processing trade {$trade->id}: " . $e->getMessage(), ['exception' => $e]);
-                $this->markTradeAsInvalid($trade);
+                $this->markTradeAsInactive($trade);
                 continue;
             }
         }
@@ -297,12 +297,12 @@ class CalculateDailyBonus extends Command
         return round($totalCapital, 2);
     }
 
-    protected function markTradeAsInvalid(Trade $trade): void
+    protected function markTradeAsInactive(Trade $trade): void
     {
-        $trade->is_valid = false;
+        $trade->is_active = 0;
         $trade->save();
-        $this->info("Marked trade ID {$trade->id} as invalid");
-        Log::info("Marked trade ID {$trade->id} as invalid");
+        $this->info("Marked trade ID {$trade->id} as inactive");
+        Log::info("Marked trade ID {$trade->id} as inactive");
     }
 
     protected function updateUserProfit(User $user, float $bonus): void
