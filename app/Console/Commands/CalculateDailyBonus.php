@@ -129,7 +129,6 @@ class CalculateDailyBonus extends Command
         if ($activeA) return 3;
         return 0;
     }
-
     private function getQualifiedSubUsers($user, $maxGen, $currentGen = 1)
     {
         $subs = [];
@@ -141,7 +140,6 @@ class CalculateDailyBonus extends Command
         }
         return $subs;
     }
-
     private function getUserDailyProfit($user, $date)
     {
         $totalDailyProfit = 0;
