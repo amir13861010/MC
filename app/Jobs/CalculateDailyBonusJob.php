@@ -2,8 +2,11 @@
 
 namespace App\Jobs;
 
+use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
 use App\Models\User;
 use App\Models\Trade;
 use App\Models\CapitalHistory;
@@ -13,192 +16,185 @@ use Illuminate\Support\Facades\Storage;
 
 class CalculateDailyBonusJob implements ShouldQueue
 {
-    use Queueable;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /**
-     * Create a new job instance.
-     */
-    public function __construct()
-    {
-        //
-    }
+    // تعداد تلاش‌های مجاز برای اجرای Job
+    public $tries = 3;
+
+    // زمان انتظار قبل از تلاش مجدد (ثانیه)
+    public $backoff = 60;
 
     /**
      * Execute the job.
      */
     public function handle(): void
     {
-        Log::info('Starting CalculateDailyBonusJob');
+        Log::channel('bonus')->info('[CalculateDailyBonusJob] Starting daily bonus calculation');
         
         $today = now()->format('Y-m-d');
-        Log::info("Calculating bonus for date: {$today}");
+        Log::channel('bonus')->info("[CalculateDailyBonusJob] Processing date: {$today}");
         
-        $users = User::all();
-        Log::info('Total users to process: ' . $users->count());
-
+        // فقط کاربران فعال را پردازش می‌کنیم
+        $users = User::where('status', 'active')->cursor();
+        
         foreach ($users as $user) {
-            Log::info("Processing user: {$user->user_id}");
-            $maxGeneration = $this->getMaxGenerationByLegs($user);
-            Log::info("Max generation for user {$user->user_id}: {$maxGeneration}");
-
-            if ($maxGeneration === 0) {
-                Log::info("No active legs for user {$user->user_id}, skipping");
+            try {
+                $this->processUser($user, $today);
+            } catch (\Exception $e) {
+                Log::channel('bonus')->error("[CalculateDailyBonusJob] Error processing user {$user->id}: " . $e->getMessage());
                 continue;
-            }
-
-            $qualifiedSubs = $this->getQualifiedSubUsers($user, $maxGeneration);
-            Log::info("Found " . count($qualifiedSubs) . " qualified sub-users for user {$user->user_id}");
-
-            $totalBonus = 0;
-            $totalSubCapital = 0;
-            $newSubsLast24h = 0;
-            $twentyFourHoursAgo = now()->subDay();
-
-            foreach ($qualifiedSubs as $sub) {
-                $dailyProfit = $this->getUserDailyProfit($sub, $today);
-                Log::info("Sub-user {$sub->user_id} daily profit: {$dailyProfit}");
-                
-                if ($dailyProfit > 0) {
-                    $bonus = $dailyProfit * 0.05;
-                    $totalBonus += $bonus;
-                    Log::info("Bonus for sub-user {$sub->user_id}: {$bonus}");
-                }
-
-                // Calculate capital only for today's active trades
-                $todayCapital = $this->getUserTodayCapital($sub, $today);
-                $totalSubCapital += $todayCapital;
-
-                // Count new subs in last 24 hours
-                if ($sub->created_at >= $twentyFourHoursAgo) {
-                    $newSubsLast24h++;
-                }
-            }
-
-            $totalSubs = count($qualifiedSubs);
-
-            if ($totalBonus > 0) {
-                Log::info("Total bonus for user {$user->user_id}: {$totalBonus}");
-                
-                DB::transaction(function () use ($user, $totalBonus, $totalSubCapital, $totalSubs, $newSubsLast24h, $today) {
-                    $user->gain_profit += $totalBonus;
-                    $user->save();
-                    Log::info("Updated gain_profit for user {$user->user_id} to {$user->gain_profit}");
-
-                    CapitalHistory::create([
-                        'user_id' => $user->user_id,
-                        'calculation_date' => $today,
-                        'bonus_amount' => $totalBonus,
-                        'total_sub_capital' => $totalSubCapital,
-                        'total_subs' => $totalSubs,
-                        'new_subs_last_24h' => $newSubsLast24h,
-                    ]);
-                    Log::info("Saved capital history for user {$user->user_id}");
-                });
-            } else {
-                Log::info("No bonus calculated for user {$user->user_id}");
-                
-                DB::transaction(function () use ($user, $totalSubCapital, $totalSubs, $newSubsLast24h, $today) {
-                    CapitalHistory::create([
-                        'user_id' => $user->user_id,
-                        'calculation_date' => $today,
-                        'bonus_amount' => 0,
-                        'total_sub_capital' => $totalSubCapital,
-                        'total_subs' => $totalSubs,
-                        'new_subs_last_24h' => $newSubsLast24h,
-                    ]);
-                    Log::info("Saved capital history (with zero bonus) for user {$user->user_id}");
-                });
             }
         }
         
-        Log::info('Finished CalculateDailyBonusJob');
+        Log::channel('bonus')->info('[CalculateDailyBonusJob] Bonus calculation completed');
     }
 
-    private function getMaxGenerationByLegs($user)
+    protected function processUser(User $user, string $today): void
     {
-        $balances = app(\App\Http\Controllers\LegBalanceController::class)->getLegBalances($user->user_id)->getData(true);
+        Log::channel('bonus')->info("[CalculateDailyBonusJob] Processing user {$user->id}");
+        
+        $maxGeneration = $this->getMaxGenerationByLegs($user);
+        Log::channel('bonus')->info("[CalculateDailyBonusJob] User {$user->id} max generation: {$maxGeneration}");
+
+        if ($maxGeneration === 0) {
+            $this->createZeroBonusRecord($user, $today);
+            return;
+        }
+
+        $qualifiedSubs = $this->getQualifiedSubUsers($user, $maxGeneration);
+        Log::channel('bonus')->info("[CalculateDailyBonusJob] User {$user->id} has " . count($qualifiedSubs) . " qualified subs");
+
+        if (empty($qualifiedSubs)) {
+            $this->createZeroBonusRecord($user, $today);
+            return;
+        }
+
+        $bonusData = $this->calculateBonusData($qualifiedSubs, $today);
+        
+        DB::transaction(function () use ($user, $bonusData, $today) {
+            $this->updateUserProfit($user, $bonusData['total_bonus']);
+            $this->createCapitalHistory($user, $bonusData, $today);
+        });
+    }
+
+    protected function getMaxGenerationByLegs(User $user): int
+    {
+        $balances = app(\App\Http\Controllers\LegBalanceController::class)
+                   ->getLegBalances($user->id)
+                   ->getData(true);
+
         $activeA = $balances['leg_a_balance'] > 0;
         $activeB = $balances['leg_b_balance'] > 0;
         $activeC = $balances['leg_c_balance'] > 0;
+
         if ($activeA && $activeB && $activeC) return 10;
         if ($activeA && $activeB) return 6;
         if ($activeA) return 3;
+        
         return 0;
     }
 
-    private function getQualifiedSubUsers($user, $maxGen, $currentGen = 1)
+    protected function getQualifiedSubUsers(User $user, int $maxGen, int $currentGen = 1): array
     {
         $subs = [];
-        foreach ($user->referrals()->get() as $ref) {
+        
+        foreach ($user->referrals()->where('status', 'active')->cursor() as $ref) {
             $subs[] = $ref;
+            
             if ($currentGen < $maxGen) {
-                $subs = array_merge($subs, $this->getQualifiedSubUsers($ref, $maxGen, $currentGen + 1));
+                $subs = array_merge(
+                    $subs, 
+                    $this->getQualifiedSubUsers($ref, $maxGen, $currentGen + 1)
+                );
             }
         }
+        
         return $subs;
     }
 
-    private function getUserDailyProfit($user, $date)
+    protected function calculateBonusData(array $qualifiedSubs, string $today): array
     {
-        $totalDailyProfit = 0;
-        
-        $trades = Trade::where('user_id', $user->user_id)->active()->get();
-        
-        foreach ($trades as $trade) {
-            try {
-                if (!Storage::disk('local')->exists($trade->file_path)) {
-                    Log::warning("Trade file not found for user {$user->user_id}: {$trade->file_path}");
-                    continue;
-                }
-    
-                $jsonContent = Storage::disk('local')->get($trade->file_path);
-                $tradeData = json_decode($jsonContent, true);
-    
-                if (!$tradeData || !isset($tradeData['data']['dailyReports'])) {
-                    Log::warning("Invalid trade data format for user {$user->user_id}");
-                    continue;
-                }
-    
-                $todayReport = null;
-                foreach ($tradeData['data']['dailyReports'] as $report) {
-                    if ($report['date'] === $date) {
-                        $todayReport = $report;
-                        break;
-                    }
-                }
-    
-                if (!$todayReport || !isset($todayReport['dailyProfit'])) {
-                    Log::info("No daily report found for user {$user->user_id} on date {$date}");
-                    continue;
-                }
-    
-                $dailyProfitPercent = floatval($todayReport['dailyProfit']);
-                $depositBalance = floatval($user->capital_profit);
-                $dailyProfitAmount = $depositBalance * ($dailyProfitPercent / 100);
-                
-                $totalDailyProfit += $dailyProfitAmount;
-                
-                Log::info("Daily profit calculated for user {$user->user_id}", [
-                    'trade_id' => $trade->id,
-                    'daily_profit_percent' => $dailyProfitPercent,
-                    'capital_profit' => $depositBalance,
-                    'daily_profit_amount' => $dailyProfitAmount
-                ]);
-    
-            } catch (\Exception $e) {
-                Log::error("Error processing trade {$trade->id} for user {$user->user_id}: " . $e->getMessage());
-                continue;
+        $totalBonus = 0;
+        $totalSubCapital = 0;
+        $activeSubsCount = 0;
+        $newSubsLast24h = 0;
+        $twentyFourHoursAgo = now()->subDay();
+
+        foreach ($qualifiedSubs as $sub) {
+            $dailyProfit = $this->calculateDailyProfit($sub, $today);
+            $todayCapital = $this->calculateTodayCapital($sub, $today);
+            
+            if ($dailyProfit > 0) {
+                $bonus = round($dailyProfit * 0.05, 2); // 5% bonus rounded to 2 decimals
+                $totalBonus += $bonus;
+                Log::channel('bonus')->info("[CalculateDailyBonusJob] Calculated {$bonus} bonus from sub {$sub->id} (profit: {$dailyProfit})");
+            }
+
+            if ($todayCapital > 0) {
+                $totalSubCapital += $todayCapital;
+                $activeSubsCount++;
+            }
+
+            if ($sub->created_at >= $twentyFourHoursAgo) {
+                $newSubsLast24h++;
             }
         }
-        
-        return $totalDailyProfit;
+
+        return [
+            'total_bonus' => $totalBonus,
+            'total_sub_capital' => $totalSubCapital,
+            'total_subs' => count($qualifiedSubs),
+            'active_subs' => $activeSubsCount,
+            'new_subs_last_24h' => $newSubsLast24h,
+        ];
     }
 
-    private function getUserTodayCapital($user, $date)
+    protected function calculateDailyProfit(User $user, string $date): float
     {
-        $totalTodayCapital = 0;
+        $totalProfit = 0;
+        
+        $trades = Trade::where('user_id', $user->id)
+                     ->where('status', 'active')
+                     ->cursor();
 
-        $trades = Trade::where('user_id', $user->user_id)->active()->get();
+        foreach ($trades as $trade) {
+            try {
+                if (!Storage::disk('local')->exists($trade->file_path)) {
+                    Log::channel('bonus')->warning("[CalculateDailyBonusJob] Trade file missing: {$trade->file_path}");
+                    continue;
+                }
+
+                $jsonContent = Storage::disk('local')->get($trade->file_path);
+                $tradeData = json_decode($jsonContent, true);
+
+                if (!$tradeData || !isset($tradeData['data']['dailyReports'])) {
+                    Log::channel('bonus')->warning("[CalculateDailyBonusJob] Invalid trade data for trade {$trade->id}");
+                    continue;
+                }
+
+                foreach ($tradeData['data']['dailyReports'] as $report) {
+                    if ($report['date'] === $date && isset($report['dailyProfit'])) {
+                        $profitPercent = floatval($report['dailyProfit']);
+                        $profitAmount = $trade->amount * ($profitPercent / 100);
+                        $totalProfit += $profitAmount;
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::channel('bonus')->error("[CalculateDailyBonusJob] Error processing trade {$trade->id}: " . $e->getMessage());
+                continue;
+            }
+        }
+
+        return round($totalProfit, 2);
+    }
+
+    protected function calculateTodayCapital(User $user, string $date): float
+    {
+        $totalCapital = 0;
+        
+        $trades = Trade::where('user_id', $user->id)
+                     ->where('status', 'active')
+                     ->cursor();
 
         foreach ($trades as $trade) {
             try {
@@ -213,26 +209,57 @@ class CalculateDailyBonusJob implements ShouldQueue
                     continue;
                 }
 
-                // Check if this trade has activity for today
-                $hasTodayActivity = false;
                 foreach ($tradeData['data']['dailyReports'] as $report) {
                     if ($report['date'] === $date) {
-                        $hasTodayActivity = true;
+                        $totalCapital += $trade->amount;
                         break;
                     }
                 }
-
-                // Only count capital if trade has activity today
-                if ($hasTodayActivity) {
-                    $totalTodayCapital += floatval($user->capital_profit);
-                }
-
             } catch (\Exception $e) {
-                Log::error("Error processing trade {$trade->id} for user {$user->user_id}: " . $e->getMessage());
+                Log::channel('bonus')->error("[CalculateDailyBonusJob] Error processing trade {$trade->id}: " . $e->getMessage());
                 continue;
             }
         }
 
-        return $totalTodayCapital;
+        return round($totalCapital, 2);
+    }
+
+    protected function updateUserProfit(User $user, float $bonus): void
+    {
+        if ($bonus > 0) {
+            $user->gain_profit += $bonus;
+            $user->save();
+            Log::channel('bonus')->info("[CalculateDailyBonusJob] Updated user {$user->id} gain_profit to {$user->gain_profit}");
+        }
+    }
+
+    protected function createCapitalHistory(User $user, array $data, string $today): void
+    {
+        CapitalHistory::create([
+            'user_id' => $user->id,
+            'calculation_date' => $today,
+            'bonus_amount' => $data['total_bonus'],
+            'total_sub_capital' => $data['total_sub_capital'],
+            'total_subs' => $data['total_subs'],
+            'active_subs' => $data['active_subs'],
+            'new_subs_last_24h' => $data['new_subs_last_24h'],
+        ]);
+
+        Log::channel('bonus')->info("[CalculateDailyBonusJob] Created capital history for user {$user->id}");
+    }
+
+    protected function createZeroBonusRecord(User $user, string $today): void
+    {
+        CapitalHistory::create([
+            'user_id' => $user->id,
+            'calculation_date' => $today,
+            'bonus_amount' => 0,
+            'total_sub_capital' => 0,
+            'total_subs' => 0,
+            'active_subs' => 0,
+            'new_subs_last_24h' => 0,
+        ]);
+
+        Log::channel('bonus')->info("[CalculateDailyBonusJob] Created zero bonus record for user {$user->id}");
     }
 }
