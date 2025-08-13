@@ -120,6 +120,7 @@ Route::get('/sub-users-capital-daily/{userId}', [\App\Http\Controllers\UserContr
 Route::get('/users/{user_id}/hierarchy-history', [\App\Http\Controllers\UserController::class, 'getHierarchyHistory']);
 Route::get('/users/{user_id}/subordinates-history', [\App\Http\Controllers\UserController::class, 'getSubordinatesHistory']);
 Route::post('/users/{user_id}/change-parent', [\App\Http\Controllers\UserController::class, 'changeParent']);
+Route::post('/auth/password/reset', [RegisterController::class, 'resetPassword']);
 
 Route::post('/trade', [TradeController::class, 'trade']);
 Route::get('/trade/{user_id}', [TradeController::class, 'getTradeResult']);

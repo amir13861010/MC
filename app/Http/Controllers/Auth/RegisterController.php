@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Mail\WelcomeEmail; // Add this import
+use App\Mail\PasswordResetEmail;
 use App\Models\User;
 use App\Models\Voucher;
 use App\Models\UserHierarchyHistory;
@@ -169,4 +170,98 @@ class RegisterController extends Controller
             'token' => $token
         ]);
     }
+/**
+    * @OA\Post(
+        *     path="/api/auth/password/reset",
+        *     summary="Reset user password",
+        *     description="Generate a new random password for the user and send it via email",
+        *     operationId="resetPassword",
+        *     tags={"Auth"},
+        *     @OA\RequestBody(
+        *         required=true,
+        *         @OA\JsonContent(
+        *             required={"user_id"},
+        *             @OA\Property(property="user_id", type="string", example="MC123456")
+        *         )
+        *     ),
+        *     @OA\Response(
+        *         response=200,
+        *         description="Password reset successful",
+        *         @OA\JsonContent(
+        *             @OA\Property(property="success", type="boolean", example=true),
+        *             @OA\Property(property="message", type="string", example="Password reset email sent successfully"),
+        *             @OA\Property(property="data", type="object",
+        *                 @OA\Property(property="user_id", type="string", example="MC123456")
+        *             )
+        *         )
+        *     ),
+        *     @OA\Response(
+        *         response=404,
+        *         description="User not found",
+        *         @OA\JsonContent(
+        *             @OA\Property(property="success", type="boolean", example=false),
+        *             @OA\Property(property="message", type="string", example="User not found")
+        *         )
+        *     ),
+        *     @OA\Response(
+        *         response=500,
+        *         description="Email sending failed",
+        *         @OA\JsonContent(
+        *             @OA\Property(property="success", type="boolean", example=false),
+        *             @OA\Property(property="message", type="string", example="Password reset but failed to send email"),
+        *             @OA\Property(property="data", type="object",
+        *                 @OA\Property(property="user_id", type="string", example="MC123456"),
+        *                 @OA\Property(property="temporary_password", type="string", example="x9y8z7w6")
+        *             )
+        *         )
+        *     )
+        * )
+        */
+       public function resetPassword(Request $request)
+       {
+           $request->validate([
+               'user_id' => 'required|string|regex:/^MC\d{6}$/'
+           ]);
+       
+           $user = User::where('user_id', $request->user_id)->first();
+       
+           if (!$user) {
+               return response()->json([
+                   'success' => false,
+                   'message' => 'User not found'
+               ], 404);
+           }
+       
+           // Generate new random password
+           $newPassword = Str::random(8);
+       
+           // Update user password
+           $user->update([
+               'password' => Hash::make($newPassword)
+           ]);
+       
+           try {
+               Mail::to($user->email)->send(new PasswordResetEmail($user->user_id, $newPassword));
+               
+               return response()->json([
+                   'success' => true,
+                   'message' => 'Password reset email sent successfully',
+                   'data' => [
+                       'user_id' => $user->user_id
+                   ]
+               ]);
+               
+           } catch (\Exception $e) {
+               \Log::error('Password reset email failed: ' . $e->getMessage());
+               
+               return response()->json([
+                   'success' => false,
+                   'message' => 'Password reset but failed to send email',
+                   'data' => [
+                       'user_id' => $user->user_id,
+                       'temporary_password' => $newPassword
+                   ]
+               ], 500);
+           }
+       }
 }
