@@ -140,7 +140,7 @@ class CalculateDailyBonus extends Command
         }
         return $subs;
     }
-    private function getUserDailyProfit($user, $date)
+    public function getUserDailyProfit($user, $date)
     {
         $totalDailyProfit = 0;
 
