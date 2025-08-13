@@ -24,7 +24,6 @@ class CalculateDailyBonus extends Command
         $this->info("Processing date: {$today}");
         Log::info("Processing date: {$today}");
 
-        // حذف شرط where('status', 'active')
         $users = User::all();
         $this->info("Found {$users->count()} users to process");
         Log::info("Found {$users->count()} users to process");
@@ -95,7 +94,6 @@ class CalculateDailyBonus extends Command
     {
         $subs = [];
         
-        // حذف شرط where('status', 'active')
         foreach ($user->referrals()->get() as $ref) {
             $subs[] = $ref;
             
@@ -150,9 +148,8 @@ class CalculateDailyBonus extends Command
     protected function calculateSubUserDailyProfit(User $user, string $date): float
     {
         $totalProfit = 0;
-        $trades = Trade::where('user_id', $user->user_id)
-                      ->where('status', 'active')
-                      ->get();
+        // حذف شرط where('status', 'active')
+        $trades = Trade::where('user_id', $user->user_id)->get();
 
         foreach ($trades as $trade) {
             try {
@@ -190,9 +187,8 @@ class CalculateDailyBonus extends Command
     protected function calculateSubUserTodayCapital(User $user, string $date): float
     {
         $totalCapital = 0;
-        $trades = Trade::where('user_id', $user->user_id)
-                      ->where('status', 'active')
-                      ->get();
+        // حذف شرط where('status', 'active')
+        $trades = Trade::where('user_id', $user->user_id)->get();
 
         foreach ($trades as $trade) {
             try {

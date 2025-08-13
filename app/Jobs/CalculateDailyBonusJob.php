@@ -31,7 +31,6 @@ class CalculateDailyBonusJob implements ShouldQueue
         $today = now()->format('Y-m-d');
         Log::channel('bonus')->info("[CalculateDailyBonusJob] Processing date: {$today}");
         
-        // پردازش همه کاربران بدون فیلتر status
         $users = User::cursor();
         
         foreach ($users as $user) {
@@ -95,7 +94,6 @@ class CalculateDailyBonusJob implements ShouldQueue
     {
         $subs = [];
         
-        // حذف شرط where('status', 'active')
         foreach ($user->referrals()->cursor() as $ref) {
             $subs[] = $ref;
             
@@ -151,9 +149,8 @@ class CalculateDailyBonusJob implements ShouldQueue
     {
         $totalProfit = 0;
         
-        $trades = Trade::where('user_id', $user->id)
-                     ->where('status', 'active')
-                     ->cursor();
+        // حذف فیلتر status از کوئری trades
+        $trades = Trade::where('user_id', $user->id)->cursor();
 
         foreach ($trades as $trade) {
             try {
@@ -190,9 +187,8 @@ class CalculateDailyBonusJob implements ShouldQueue
     {
         $totalCapital = 0;
         
-        $trades = Trade::where('user_id', $user->id)
-                     ->where('status', 'active')
-                     ->cursor();
+        // حذف فیلتر status از کوئری trades
+        $trades = Trade::where('user_id', $user->id)->cursor();
 
         foreach ($trades as $trade) {
             try {
