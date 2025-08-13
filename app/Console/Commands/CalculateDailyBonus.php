@@ -67,6 +67,11 @@ class CalculateDailyBonus extends Command
 
         $bonusData = $this->calculateUserBonus($user, $qualifiedSubs, $today);
         
+        if ($bonusData['total_bonus'] == 0 && $bonusData['total_sub_capital'] == 0) {
+            $this->warn("No bonus or capital calculated for user {$user->user_id}. Check trade data or active status.");
+            Log::warning("No bonus or capital calculated for user {$user->user_id}. Check trade data or active status.");
+        }
+
         DB::transaction(function () use ($user, $bonusData, $today) {
             $this->updateUserProfit($user, $bonusData['total_bonus']);
             $this->createCapitalHistory($user, $bonusData, $today);
@@ -124,11 +129,20 @@ class CalculateDailyBonus extends Command
                 $bonus = round($dailyProfit * 0.05, 2);
                 $totalBonus += $bonus;
                 $this->info("Sub-user {$sub->user_id} bonus: {$bonus} (from profit: {$dailyProfit})");
+                Log::info("Sub-user {$sub->user_id} bonus: {$bonus} (from profit: {$dailyProfit})");
+            } else {
+                $this->info("No profit calculated for sub-user {$sub->user_id}");
+                Log::info("No profit calculated for sub-user {$sub->user_id}");
             }
 
             if ($todayCapital > 0) {
                 $totalSubCapital += $todayCapital;
                 $totalActiveSubs++;
+                $this->info("Sub-user {$sub->user_id} capital: {$todayCapital}");
+                Log::info("Sub-user {$sub->user_id} capital: {$todayCapital}");
+            } else {
+                $this->info("No capital calculated for sub-user {$sub->user_id}");
+                Log::info("No capital calculated for sub-user {$sub->user_id}");
             }
 
             if ($sub->created_at >= $twentyFourHoursAgo) {
@@ -152,10 +166,17 @@ class CalculateDailyBonus extends Command
                        ->where('is_active', 1)
                        ->get();
 
+        if ($trades->isEmpty()) {
+            $this->info("No active trades found for user {$user->user_id}");
+            Log::info("No active trades found for user {$user->user_id}");
+            return 0;
+        }
+
         foreach ($trades as $trade) {
             try {
                 if (!Storage::disk('local')->exists($trade->file_path)) {
                     $this->warn("Trade file missing for trade ID: {$trade->id}");
+                    Log::warning("Trade file missing for trade ID: {$trade->id}");
                     $this->markTradeAsInactive($trade);
                     continue;
                 }
@@ -193,6 +214,7 @@ class CalculateDailyBonus extends Command
                 foreach ($tradeData['result']['data']['dailyReports'] as $report) {
                     if (!isset($report['date']) || !isset($report['dailyProfit'])) {
                         $this->warn("Invalid daily report format for trade ID: {$trade->id}: missing date or dailyProfit");
+                        Log::warning("Invalid daily report format for trade ID: {$trade->id}: missing date or dailyProfit");
                         continue;
                     }
 
@@ -202,11 +224,13 @@ class CalculateDailyBonus extends Command
                         $totalProfit += $profitAmount;
                         $foundDate = true;
                         $this->info("Trade {$trade->id} profit: {$profitAmount} ({$profitPercent}% of {$trade->amount})");
+                        Log::info("Trade {$trade->id} profit: {$profitAmount} ({$profitPercent}% of {$trade->amount})");
                     }
                 }
 
                 if (!$foundDate) {
                     $this->info("No daily report found for trade ID: {$trade->id} on date: {$date}");
+                    Log::info("No daily report found for trade ID: {$trade->id} on date: {$date}");
                 }
             } catch (\Exception $e) {
                 $this->error("Error processing trade {$trade->id}: " . $e->getMessage());
@@ -226,10 +250,17 @@ class CalculateDailyBonus extends Command
                        ->where('is_active', 1)
                        ->get();
 
+        if ($trades->isEmpty()) {
+            $this->info("No active trades found for user {$user->user_id}");
+            Log::info("No active trades found for user {$user->user_id}");
+            return 0;
+        }
+
         foreach ($trades as $trade) {
             try {
                 if (!Storage::disk('local')->exists($trade->file_path)) {
                     $this->warn("Trade file missing for trade ID: {$trade->id}");
+                    Log::warning("Trade file missing for trade ID: {$trade->id}");
                     $this->markTradeAsInactive($trade);
                     continue;
                 }
@@ -267,6 +298,7 @@ class CalculateDailyBonus extends Command
                 foreach ($tradeData['result']['data']['dailyReports'] as $report) {
                     if (!isset($report['date']) || !isset($report['trades'])) {
                         $this->warn("Invalid daily report format for trade ID: {$trade->id}: missing date or trades");
+                        Log::warning("Invalid daily report format for trade ID: {$trade->id}: missing date or trades");
                         continue;
                     }
 
@@ -274,17 +306,21 @@ class CalculateDailyBonus extends Command
                         foreach ($report['trades'] as $tradeData) {
                             if (!isset($tradeData['capital'])) {
                                 $this->warn("Invalid trade data for trade ID: {$trade->id}: missing capital");
+                                Log::warning("Invalid trade data for trade ID: {$trade->id}: missing capital");
                                 continue;
                             }
                             $totalCapital += floatval($tradeData['capital']);
                         }
                         $foundDate = true;
+                        $this->info("Trade {$trade->id} capital calculated for date: {$date}");
+                        Log::info("Trade {$trade->id} capital calculated for date: {$date}");
                         break;
                     }
                 }
 
                 if (!$foundDate) {
                     $this->info("No daily report found for trade ID: {$trade->id} on date: {$date}");
+                    Log::info("No daily report found for trade ID: {$trade->id} on date: {$date}");
                 }
             } catch (\Exception $e) {
                 $this->error("Error processing trade {$trade->id}: " . $e->getMessage());
