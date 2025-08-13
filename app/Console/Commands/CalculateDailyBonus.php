@@ -194,9 +194,18 @@ class CalculateDailyBonus extends Command
                     continue;
                 }
 
-                // Validate JSON structure
-                if (!$tradeData || !isset($tradeData['result']['data']['dailyReports'])) {
-                    $this->warn("Invalid trade data format for trade ID: {$trade->id}: missing result.data.dailyReports");
+                // Try different JSON structures
+                $dailyReports = null;
+                if (isset($tradeData['result']['data']['dailyReports'])) {
+                    $dailyReports = $tradeData['result']['data']['dailyReports'];
+                } elseif (isset($tradeData['data']['dailyReports'])) {
+                    $dailyReports = $tradeData['data']['dailyReports'];
+                } elseif (isset($tradeData['dailyReports'])) {
+                    $dailyReports = $tradeData['dailyReports'];
+                }
+
+                if (!$dailyReports) {
+                    $this->warn("Invalid trade data format for trade ID: {$trade->id}: no dailyReports found");
                     Log::debug("Trade ID {$trade->id} data structure:", [
                         'file_exists' => true,
                         'json_valid' => true,
@@ -211,7 +220,7 @@ class CalculateDailyBonus extends Command
                 }
 
                 $foundDate = false;
-                foreach ($tradeData['result']['data']['dailyReports'] as $report) {
+                foreach ($dailyReports as $report) {
                     if (!isset($report['date']) || !isset($report['dailyProfit'])) {
                         $this->warn("Invalid daily report format for trade ID: {$trade->id}: missing date or dailyProfit");
                         Log::warning("Invalid daily report format for trade ID: {$trade->id}: missing date or dailyProfit");
@@ -219,12 +228,14 @@ class CalculateDailyBonus extends Command
                     }
 
                     if ($report['date'] === $date) {
+                        // dailyProfit is a string, convert to float
                         $profitPercent = floatval($report['dailyProfit']);
-                        $profitAmount = $trade->amount * ($profitPercent / 100);
+                        // Use user's deposit_balance instead of trade->amount
+                        $profitAmount = $user->deposit_balance * ($profitPercent / 100);
                         $totalProfit += $profitAmount;
                         $foundDate = true;
-                        $this->info("Trade {$trade->id} profit: {$profitAmount} ({$profitPercent}% of {$trade->amount})");
-                        Log::info("Trade {$trade->id} profit: {$profitAmount} ({$profitPercent}% of {$trade->amount})");
+                        $this->info("Trade {$trade->id} profit: {$profitAmount} ({$profitPercent}% of {$user->deposit_balance})");
+                        Log::info("Trade {$trade->id} profit: {$profitAmount} ({$profitPercent}% of {$user->deposit_balance})");
                     }
                 }
 
@@ -278,9 +289,18 @@ class CalculateDailyBonus extends Command
                     continue;
                 }
 
-                // Validate JSON structure
-                if (!$tradeData || !isset($tradeData['result']['data']['dailyReports'])) {
-                    $this->warn("Invalid trade data format for trade ID: {$trade->id}: missing result.data.dailyReports");
+                // Try different JSON structures
+                $dailyReports = null;
+                if (isset($tradeData['result']['data']['dailyReports'])) {
+                    $dailyReports = $tradeData['result']['data']['dailyReports'];
+                } elseif (isset($tradeData['data']['dailyReports'])) {
+                    $dailyReports = $tradeData['data']['dailyReports'];
+                } elseif (isset($tradeData['dailyReports'])) {
+                    $dailyReports = $tradeData['dailyReports'];
+                }
+
+                if (!$dailyReports) {
+                    $this->warn("Invalid trade data format for trade ID: {$trade->id}: no dailyReports found");
                     Log::debug("Trade ID {$trade->id} data structure:", [
                         'file_exists' => true,
                         'json_valid' => true,
@@ -295,7 +315,7 @@ class CalculateDailyBonus extends Command
                 }
 
                 $foundDate = false;
-                foreach ($tradeData['result']['data']['dailyReports'] as $report) {
+                foreach ($dailyReports as $report) {
                     if (!isset($report['date']) || !isset($report['trades'])) {
                         $this->warn("Invalid daily report format for trade ID: {$trade->id}: missing date or trades");
                         Log::warning("Invalid daily report format for trade ID: {$trade->id}: missing date or trades");
