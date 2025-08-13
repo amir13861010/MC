@@ -47,6 +47,21 @@ class CalculateDailyBonus extends Command
         $this->info("Processing user: {$user->user_id} ({$user->username})");
         Log::info("Processing user: {$user->user_id} ({$user->username})");
 
+        // Debug: Check if user has any trades in database
+        $allTrades = Trade::where('user_id', $user->user_id)->get();
+        $this->info("User {$user->user_id} has {$allTrades->count()} total trades in database");
+        Log::info("User {$user->user_id} has {$allTrades->count()} total trades in database");
+        
+        if ($allTrades->count() > 0) {
+            foreach ($allTrades as $trade) {
+                $this->info("Trade ID {$trade->id}: is_active={$trade->is_active}, file_path={$trade->file_path}, expires_at={$trade->expires_at}");
+                Log::info("Trade ID {$trade->id}: is_active={$trade->is_active}, file_path={$trade->file_path}, expires_at={$trade->expires_at}");
+            }
+        } else {
+            $this->warn("User {$user->user_id} has NO trades in database!");
+            Log::warning("User {$user->user_id} has NO trades in database!");
+        }
+
         $maxGeneration = $this->getMaxGenerationByLegs($user);
         $this->info("Max generation level: {$maxGeneration}");
         
@@ -122,6 +137,23 @@ class CalculateDailyBonus extends Command
         $twentyFourHoursAgo = now()->subDay();
 
         foreach ($qualifiedSubs as $sub) {
+            // Check if user has active trade file
+            $trade = Trade::where('user_id', $sub->user_id)
+                         ->where('is_active', 1)
+                         ->first();
+            
+            if (!$trade) {
+                $this->info("Sub-user {$sub->user_id} has no active trade, skipping");
+                Log::info("Sub-user {$sub->user_id} has no active trade, skipping");
+                continue;
+            }
+
+            if (!Storage::disk('local')->exists($trade->file_path)) {
+                $this->info("Sub-user {$sub->user_id} trade file missing, skipping");
+                Log::info("Sub-user {$sub->user_id} trade file missing, skipping");
+                continue;
+            }
+
             $dailyProfit = $this->calculateSubUserDailyProfit($sub, $today);
             $todayCapital = $this->calculateSubUserTodayCapital($sub, $today);
             
@@ -196,7 +228,6 @@ class CalculateDailyBonus extends Command
                 if (!Storage::disk('local')->exists($trade->file_path)) {
                     $this->warn("Trade file missing for trade ID: {$trade->id}");
                     Log::warning("Trade file missing for trade ID: {$trade->id}");
-                    $this->markTradeAsInactive($trade);
                     continue;
                 }
 
@@ -209,7 +240,6 @@ class CalculateDailyBonus extends Command
                     Log::debug("Trade ID {$trade->id} JSON content (truncated):", [
                         'content' => substr($jsonContent, 0, 1000)
                     ]);
-                    $this->markTradeAsInactive($trade);
                     continue;
                 }
 
@@ -237,7 +267,6 @@ class CalculateDailyBonus extends Command
                         'dailyReports_exists' => isset($tradeData['result']['data']['dailyReports']),
                         'json_content' => substr($jsonContent, 0, 1000)
                     ]);
-                    $this->markTradeAsInactive($trade);
                     continue;
                 }
 
@@ -274,7 +303,6 @@ class CalculateDailyBonus extends Command
             } catch (\Exception $e) {
                 $this->error("Error processing trade {$trade->id}: " . $e->getMessage());
                 Log::error("Error processing trade {$trade->id}: " . $e->getMessage(), ['exception' => $e]);
-                $this->markTradeAsInactive($trade);
                 continue;
             }
         }
@@ -309,7 +337,6 @@ class CalculateDailyBonus extends Command
                 if (!Storage::disk('local')->exists($trade->file_path)) {
                     $this->warn("Trade file missing for trade ID: {$trade->id}");
                     Log::warning("Trade file missing for trade ID: {$trade->id}");
-                    $this->markTradeAsInactive($trade);
                     continue;
                 }
 
@@ -322,7 +349,6 @@ class CalculateDailyBonus extends Command
                     Log::debug("Trade ID {$trade->id} JSON content (truncated):", [
                         'content' => substr($jsonContent, 0, 1000)
                     ]);
-                    $this->markTradeAsInactive($trade);
                     continue;
                 }
 
@@ -350,7 +376,6 @@ class CalculateDailyBonus extends Command
                         'dailyReports_exists' => isset($tradeData['result']['data']['dailyReports']),
                         'json_content' => substr($jsonContent, 0, 1000)
                     ]);
-                    $this->markTradeAsInactive($trade);
                     continue;
                 }
 
@@ -397,7 +422,6 @@ class CalculateDailyBonus extends Command
             } catch (\Exception $e) {
                 $this->error("Error processing trade {$trade->id}: " . $e->getMessage());
                 Log::error("Error processing trade {$trade->id}: " . $e->getMessage(), ['exception' => $e]);
-                $this->markTradeAsInactive($trade);
                 continue;
             }
         }
@@ -408,13 +432,7 @@ class CalculateDailyBonus extends Command
         return round($totalCapital, 2);
     }
 
-    protected function markTradeAsInactive(Trade $trade): void
-    {
-        $trade->is_active = 0;
-        $trade->save();
-        $this->info("Marked trade ID {$trade->id} as inactive");
-        Log::info("Marked trade ID {$trade->id} as inactive");
-    }
+
 
     protected function updateUserProfit(User $user, float $bonus): void
     {
