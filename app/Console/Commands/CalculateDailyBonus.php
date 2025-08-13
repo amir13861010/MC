@@ -148,12 +148,15 @@ class CalculateDailyBonus extends Command
     protected function calculateSubUserDailyProfit(User $user, string $date): float
     {
         $totalProfit = 0;
-        $trades = Trade::where('user_id', $user->user_id)->get();
+        $trades = Trade::where('user_id', $user->user_id)
+                       ->where('is_valid', true)
+                       ->get();
 
         foreach ($trades as $trade) {
             try {
                 if (!Storage::disk('local')->exists($trade->file_path)) {
                     $this->warn("Trade file missing for trade ID: {$trade->id}");
+                    $this->markTradeAsInvalid($trade);
                     continue;
                 }
 
@@ -163,6 +166,10 @@ class CalculateDailyBonus extends Command
                 // Check for JSON decoding errors
                 if (json_last_error() !== JSON_ERROR_NONE) {
                     $this->warn("JSON decoding error for trade ID: {$trade->id}: " . json_last_error_msg());
+                    Log::debug("Trade ID {$trade->id} JSON content (truncated):", [
+                        'content' => substr($jsonContent, 0, 1000)
+                    ]);
+                    $this->markTradeAsInvalid($trade);
                     continue;
                 }
 
@@ -171,12 +178,14 @@ class CalculateDailyBonus extends Command
                     $this->warn("Invalid trade data format for trade ID: {$trade->id}: missing result.data.dailyReports");
                     Log::debug("Trade ID {$trade->id} data structure:", [
                         'file_exists' => true,
-                        'json_valid' => false,
+                        'json_valid' => true,
                         'keys' => $tradeData ? array_keys($tradeData) : 'invalid JSON',
                         'result_exists' => isset($tradeData['result']),
                         'data_exists' => isset($tradeData['result']['data']),
-                        'dailyReports_exists' => isset($tradeData['result']['data']['dailyReports'])
+                        'dailyReports_exists' => isset($tradeData['result']['data']['dailyReports']),
+                        'json_content' => substr($jsonContent, 0, 1000)
                     ]);
+                    $this->markTradeAsInvalid($trade);
                     continue;
                 }
 
@@ -202,6 +211,7 @@ class CalculateDailyBonus extends Command
             } catch (\Exception $e) {
                 $this->error("Error processing trade {$trade->id}: " . $e->getMessage());
                 Log::error("Error processing trade {$trade->id}: " . $e->getMessage(), ['exception' => $e]);
+                $this->markTradeAsInvalid($trade);
                 continue;
             }
         }
@@ -212,12 +222,15 @@ class CalculateDailyBonus extends Command
     protected function calculateSubUserTodayCapital(User $user, string $date): float
     {
         $totalCapital = 0;
-        $trades = Trade::where('user_id', $user->user_id)->get();
+        $trades = Trade::where('user_id', $user->user_id)
+                       ->where('is_valid', true)
+                       ->get();
 
         foreach ($trades as $trade) {
             try {
                 if (!Storage::disk('local')->exists($trade->file_path)) {
                     $this->warn("Trade file missing for trade ID: {$trade->id}");
+                    $this->markTradeAsInvalid($trade);
                     continue;
                 }
 
@@ -227,6 +240,10 @@ class CalculateDailyBonus extends Command
                 // Check for JSON decoding errors
                 if (json_last_error() !== JSON_ERROR_NONE) {
                     $this->warn("JSON decoding error for trade ID: {$trade->id}: " . json_last_error_msg());
+                    Log::debug("Trade ID {$trade->id} JSON content (truncated):", [
+                        'content' => substr($jsonContent, 0, 1000)
+                    ]);
+                    $this->markTradeAsInvalid($trade);
                     continue;
                 }
 
@@ -235,12 +252,14 @@ class CalculateDailyBonus extends Command
                     $this->warn("Invalid trade data format for trade ID: {$trade->id}: missing result.data.dailyReports");
                     Log::debug("Trade ID {$trade->id} data structure:", [
                         'file_exists' => true,
-                        'json_valid' => false,
+                        'json_valid' => true,
                         'keys' => $tradeData ? array_keys($tradeData) : 'invalid JSON',
                         'result_exists' => isset($tradeData['result']),
                         'data_exists' => isset($tradeData['result']['data']),
-                        'dailyReports_exists' => isset($tradeData['result']['data']['dailyReports'])
+                        'dailyReports_exists' => isset($tradeData['result']['data']['dailyReports']),
+                        'json_content' => substr($jsonContent, 0, 1000)
                     ]);
+                    $this->markTradeAsInvalid($trade);
                     continue;
                 }
 
@@ -270,11 +289,20 @@ class CalculateDailyBonus extends Command
             } catch (\Exception $e) {
                 $this->error("Error processing trade {$trade->id}: " . $e->getMessage());
                 Log::error("Error processing trade {$trade->id}: " . $e->getMessage(), ['exception' => $e]);
+                $this->markTradeAsInvalid($trade);
                 continue;
             }
         }
 
         return round($totalCapital, 2);
+    }
+
+    protected function markTradeAsInvalid(Trade $trade): void
+    {
+        $trade->is_valid = false;
+        $trade->save();
+        $this->info("Marked trade ID {$trade->id} as invalid");
+        Log::info("Marked trade ID {$trade->id} as invalid");
     }
 
     protected function updateUserProfit(User $user, float $bonus): void
