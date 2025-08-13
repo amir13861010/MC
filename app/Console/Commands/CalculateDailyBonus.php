@@ -166,14 +166,33 @@ class CalculateDailyBonus extends Command
                        ->where('is_active', 1)
                        ->get();
 
+        $this->info("Found " . $trades->count() . " active trades for user {$user->user_id}");
+        Log::info("Found " . $trades->count() . " active trades for user {$user->user_id}");
+
         if ($trades->isEmpty()) {
             $this->info("No active trades found for user {$user->user_id}");
             Log::info("No active trades found for user {$user->user_id}");
+            
+            // Check if user has any trades at all
+            $allTrades = Trade::where('user_id', $user->user_id)->get();
+            $this->info("Total trades for user {$user->user_id}: " . $allTrades->count());
+            Log::info("Total trades for user {$user->user_id}: " . $allTrades->count());
+            
+            if ($allTrades->count() > 0) {
+                foreach ($allTrades as $trade) {
+                    $this->info("Trade ID {$trade->id}: is_active={$trade->is_active}, file_path={$trade->file_path}");
+                    Log::info("Trade ID {$trade->id}: is_active={$trade->is_active}, file_path={$trade->file_path}");
+                }
+            }
+            
             return 0;
         }
 
         foreach ($trades as $trade) {
             try {
+                $this->info("Processing trade ID: {$trade->id}, file_path: {$trade->file_path}");
+                Log::info("Processing trade ID: {$trade->id}, file_path: {$trade->file_path}");
+                
                 if (!Storage::disk('local')->exists($trade->file_path)) {
                     $this->warn("Trade file missing for trade ID: {$trade->id}");
                     Log::warning("Trade file missing for trade ID: {$trade->id}");
@@ -198,10 +217,13 @@ class CalculateDailyBonus extends Command
                 $dailyReports = null;
                 if (isset($tradeData['result']['data']['dailyReports'])) {
                     $dailyReports = $tradeData['result']['data']['dailyReports'];
+                    $this->info("Found dailyReports in result.data.dailyReports");
                 } elseif (isset($tradeData['data']['dailyReports'])) {
                     $dailyReports = $tradeData['data']['dailyReports'];
+                    $this->info("Found dailyReports in data.dailyReports");
                 } elseif (isset($tradeData['dailyReports'])) {
                     $dailyReports = $tradeData['dailyReports'];
+                    $this->info("Found dailyReports in dailyReports");
                 }
 
                 if (!$dailyReports) {
@@ -219,6 +241,9 @@ class CalculateDailyBonus extends Command
                     continue;
                 }
 
+                $this->info("Found " . count($dailyReports) . " daily reports in trade file");
+                Log::info("Found " . count($dailyReports) . " daily reports in trade file");
+
                 $foundDate = false;
                 foreach ($dailyReports as $report) {
                     if (!isset($report['date']) || !isset($report['dailyProfit'])) {
@@ -226,6 +251,9 @@ class CalculateDailyBonus extends Command
                         Log::warning("Invalid daily report format for trade ID: {$trade->id}: missing date or dailyProfit");
                         continue;
                     }
+
+                    $this->info("Checking report date: {$report['date']} vs target date: {$date}");
+                    Log::info("Checking report date: {$report['date']} vs target date: {$date}");
 
                     if ($report['date'] === $date) {
                         // dailyProfit is a string, convert to float
@@ -251,6 +279,9 @@ class CalculateDailyBonus extends Command
             }
         }
 
+        $this->info("Total profit calculated for user {$user->user_id}: {$totalProfit}");
+        Log::info("Total profit calculated for user {$user->user_id}: {$totalProfit}");
+
         return round($totalProfit, 2);
     }
 
@@ -261,14 +292,20 @@ class CalculateDailyBonus extends Command
                        ->where('is_active', 1)
                        ->get();
 
+        $this->info("Found " . $trades->count() . " active trades for user {$user->user_id} (capital calculation)");
+        Log::info("Found " . $trades->count() . " active trades for user {$user->user_id} (capital calculation)");
+
         if ($trades->isEmpty()) {
-            $this->info("No active trades found for user {$user->user_id}");
-            Log::info("No active trades found for user {$user->user_id}");
+            $this->info("No active trades found for user {$user->user_id} (capital calculation)");
+            Log::info("No active trades found for user {$user->user_id} (capital calculation)");
             return 0;
         }
 
         foreach ($trades as $trade) {
             try {
+                $this->info("Processing trade ID: {$trade->id} for capital calculation, file_path: {$trade->file_path}");
+                Log::info("Processing trade ID: {$trade->id} for capital calculation, file_path: {$trade->file_path}");
+                
                 if (!Storage::disk('local')->exists($trade->file_path)) {
                     $this->warn("Trade file missing for trade ID: {$trade->id}");
                     Log::warning("Trade file missing for trade ID: {$trade->id}");
@@ -293,10 +330,13 @@ class CalculateDailyBonus extends Command
                 $dailyReports = null;
                 if (isset($tradeData['result']['data']['dailyReports'])) {
                     $dailyReports = $tradeData['result']['data']['dailyReports'];
+                    $this->info("Found dailyReports in result.data.dailyReports (capital)");
                 } elseif (isset($tradeData['data']['dailyReports'])) {
                     $dailyReports = $tradeData['data']['dailyReports'];
+                    $this->info("Found dailyReports in data.dailyReports (capital)");
                 } elseif (isset($tradeData['dailyReports'])) {
                     $dailyReports = $tradeData['dailyReports'];
+                    $this->info("Found dailyReports in dailyReports (capital)");
                 }
 
                 if (!$dailyReports) {
@@ -314,6 +354,9 @@ class CalculateDailyBonus extends Command
                     continue;
                 }
 
+                $this->info("Found " . count($dailyReports) . " daily reports in trade file (capital)");
+                Log::info("Found " . count($dailyReports) . " daily reports in trade file (capital)");
+
                 $foundDate = false;
                 foreach ($dailyReports as $report) {
                     if (!isset($report['date']) || !isset($report['trades'])) {
@@ -322,14 +365,23 @@ class CalculateDailyBonus extends Command
                         continue;
                     }
 
+                    $this->info("Checking report date: {$report['date']} vs target date: {$date} (capital)");
+                    Log::info("Checking report date: {$report['date']} vs target date: {$date} (capital)");
+
                     if ($report['date'] === $date) {
+                        $this->info("Found matching date, processing " . count($report['trades']) . " trades");
+                        Log::info("Found matching date, processing " . count($report['trades']) . " trades");
+                        
                         foreach ($report['trades'] as $tradeData) {
                             if (!isset($tradeData['capital'])) {
                                 $this->warn("Invalid trade data for trade ID: {$trade->id}: missing capital");
                                 Log::warning("Invalid trade data for trade ID: {$trade->id}: missing capital");
                                 continue;
                             }
-                            $totalCapital += floatval($tradeData['capital']);
+                            $capital = floatval($tradeData['capital']);
+                            $totalCapital += $capital;
+                            $this->info("Added capital: {$capital}");
+                            Log::info("Added capital: {$capital}");
                         }
                         $foundDate = true;
                         $this->info("Trade {$trade->id} capital calculated for date: {$date}");
@@ -349,6 +401,9 @@ class CalculateDailyBonus extends Command
                 continue;
             }
         }
+
+        $this->info("Total capital calculated for user {$user->user_id}: {$totalCapital}");
+        Log::info("Total capital calculated for user {$user->user_id}: {$totalCapital}");
 
         return round($totalCapital, 2);
     }
