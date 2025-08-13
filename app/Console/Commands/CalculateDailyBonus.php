@@ -146,47 +146,62 @@ class CalculateDailyBonus extends Command
     }
 
     protected function calculateSubUserDailyProfit(User $user, string $date): float
-{
-    $totalProfit = 0;
-    $trades = Trade::where('user_id', $user->user_id)->get();
+    {
+        $totalProfit = 0;
+        $trades = Trade::where('user_id', $user->user_id)->get();
 
-    foreach ($trades as $trade) {
-        try {
-            if (!Storage::disk('local')->exists($trade->file_path)) {
-                $this->warn("Trade file missing for trade ID: {$trade->id}");
-                continue;
-            }
+        foreach ($trades as $trade) {
+            try {
+                if (!Storage::disk('local')->exists($trade->file_path)) {
+                    $this->warn("Trade file missing for trade ID: {$trade->id}");
+                    continue;
+                }
 
-            $jsonContent = Storage::disk('local')->get($trade->file_path);
-            $tradeData = json_decode($jsonContent, true);
+                $jsonContent = Storage::disk('local')->get($trade->file_path);
+                $tradeData = json_decode($jsonContent, true);
 
-            // دیباگ: نمایش ساختار کامل فایل JSON
-            Log::debug("Trade ID {$trade->id} data structure:", [
-                'file_exists' => true,
-                'json_valid' => (json_last_error() === JSON_ERROR_NONE),
-                'keys' => $tradeData ? array_keys($tradeData) : 'invalid JSON',
-                'result_exists' => isset($tradeData['result']),
-                'data_exists' => isset($tradeData['result']['data']),
-                'dailyReports_exists' => isset($tradeData['result']['data']['dailyReports'])
-            ]);
+                // Check for JSON decoding errors
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    $this->warn("JSON decoding error for trade ID: {$trade->id}: " . json_last_error_msg());
+                    continue;
+                }
 
-            if (!$tradeData || !isset($tradeData['result']['data']['dailyReports'])) {
-                $this->warn("Invalid trade data format for trade ID: {$trade->id}");
-                Storage::move($trade->file_path, 'failed_trades/' . basename($trade->file_path));
-                continue;
-            }
+                // Validate JSON structure
+                if (!$tradeData || !isset($tradeData['result']['data']['dailyReports'])) {
+                    $this->warn("Invalid trade data format for trade ID: {$trade->id}: missing result.data.dailyReports");
+                    Log::debug("Trade ID {$trade->id} data structure:", [
+                        'file_exists' => true,
+                        'json_valid' => false,
+                        'keys' => $tradeData ? array_keys($tradeData) : 'invalid JSON',
+                        'result_exists' => isset($tradeData['result']),
+                        'data_exists' => isset($tradeData['result']['data']),
+                        'dailyReports_exists' => isset($tradeData['result']['data']['dailyReports'])
+                    ]);
+                    continue;
+                }
 
+                $foundDate = false;
                 foreach ($tradeData['result']['data']['dailyReports'] as $report) {
-                    if ($report['date'] === $date && isset($report['dailyProfit'])) {
+                    if (!isset($report['date']) || !isset($report['dailyProfit'])) {
+                        $this->warn("Invalid daily report format for trade ID: {$trade->id}: missing date or dailyProfit");
+                        continue;
+                    }
+
+                    if ($report['date'] === $date) {
                         $profitPercent = floatval($report['dailyProfit']);
                         $profitAmount = $trade->amount * ($profitPercent / 100);
                         $totalProfit += $profitAmount;
-                        
+                        $foundDate = true;
                         $this->info("Trade {$trade->id} profit: {$profitAmount} ({$profitPercent}% of {$trade->amount})");
                     }
                 }
+
+                if (!$foundDate) {
+                    $this->info("No daily report found for trade ID: {$trade->id} on date: {$date}");
+                }
             } catch (\Exception $e) {
                 $this->error("Error processing trade {$trade->id}: " . $e->getMessage());
+                Log::error("Error processing trade {$trade->id}: " . $e->getMessage(), ['exception' => $e]);
                 continue;
             }
         }
@@ -202,28 +217,59 @@ class CalculateDailyBonus extends Command
         foreach ($trades as $trade) {
             try {
                 if (!Storage::disk('local')->exists($trade->file_path)) {
+                    $this->warn("Trade file missing for trade ID: {$trade->id}");
                     continue;
                 }
 
                 $jsonContent = Storage::disk('local')->get($trade->file_path);
                 $tradeData = json_decode($jsonContent, true);
 
-                // تغییر اصلی: اصلاح مسیر دسترسی به dailyReports
-                if (!$tradeData || !isset($tradeData['result']['data']['dailyReports'])) {
+                // Check for JSON decoding errors
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    $this->warn("JSON decoding error for trade ID: {$trade->id}: " . json_last_error_msg());
                     continue;
                 }
 
+                // Validate JSON structure
+                if (!$tradeData || !isset($tradeData['result']['data']['dailyReports'])) {
+                    $this->warn("Invalid trade data format for trade ID: {$trade->id}: missing result.data.dailyReports");
+                    Log::debug("Trade ID {$trade->id} data structure:", [
+                        'file_exists' => true,
+                        'json_valid' => false,
+                        'keys' => $tradeData ? array_keys($tradeData) : 'invalid JSON',
+                        'result_exists' => isset($tradeData['result']),
+                        'data_exists' => isset($tradeData['result']['data']),
+                        'dailyReports_exists' => isset($tradeData['result']['data']['dailyReports'])
+                    ]);
+                    continue;
+                }
+
+                $foundDate = false;
                 foreach ($tradeData['result']['data']['dailyReports'] as $report) {
+                    if (!isset($report['date']) || !isset($report['trades'])) {
+                        $this->warn("Invalid daily report format for trade ID: {$trade->id}: missing date or trades");
+                        continue;
+                    }
+
                     if ($report['date'] === $date) {
-                        // محاسبه مجموع سرمایه از تمام تریدهای آن روز
                         foreach ($report['trades'] as $tradeData) {
-                            $totalCapital += $tradeData['capital'];
+                            if (!isset($tradeData['capital'])) {
+                                $this->warn("Invalid trade data for trade ID: {$trade->id}: missing capital");
+                                continue;
+                            }
+                            $totalCapital += floatval($tradeData['capital']);
                         }
+                        $foundDate = true;
                         break;
                     }
                 }
+
+                if (!$foundDate) {
+                    $this->info("No daily report found for trade ID: {$trade->id} on date: {$date}");
+                }
             } catch (\Exception $e) {
                 $this->error("Error processing trade {$trade->id}: " . $e->getMessage());
+                Log::error("Error processing trade {$trade->id}: " . $e->getMessage(), ['exception' => $e]);
                 continue;
             }
         }
