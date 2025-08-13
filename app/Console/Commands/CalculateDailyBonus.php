@@ -146,25 +146,35 @@ class CalculateDailyBonus extends Command
     }
 
     protected function calculateSubUserDailyProfit(User $user, string $date): float
-    {
-        $totalProfit = 0;
-        $trades = Trade::where('user_id', $user->user_id)->get();
+{
+    $totalProfit = 0;
+    $trades = Trade::where('user_id', $user->user_id)->get();
 
-        foreach ($trades as $trade) {
-            try {
-                if (!Storage::disk('local')->exists($trade->file_path)) {
-                    $this->warn("Trade file missing for trade ID: {$trade->id}");
-                    continue;
-                }
+    foreach ($trades as $trade) {
+        try {
+            if (!Storage::disk('local')->exists($trade->file_path)) {
+                $this->warn("Trade file missing for trade ID: {$trade->id}");
+                continue;
+            }
 
-                $jsonContent = Storage::disk('local')->get($trade->file_path);
-                $tradeData = json_decode($jsonContent, true);
+            $jsonContent = Storage::disk('local')->get($trade->file_path);
+            $tradeData = json_decode($jsonContent, true);
 
-                // تغییر اصلی: اصلاح مسیر دسترسی به dailyReports
-                if (!$tradeData || !isset($tradeData['result']['data']['dailyReports'])) {
-                    $this->warn("Invalid trade data format for trade ID: {$trade->id}");
-                    continue;
-                }
+            // دیباگ: نمایش ساختار کامل فایل JSON
+            Log::debug("Trade ID {$trade->id} data structure:", [
+                'file_exists' => true,
+                'json_valid' => (json_last_error() === JSON_ERROR_NONE),
+                'keys' => $tradeData ? array_keys($tradeData) : 'invalid JSON',
+                'result_exists' => isset($tradeData['result']),
+                'data_exists' => isset($tradeData['result']['data']),
+                'dailyReports_exists' => isset($tradeData['result']['data']['dailyReports'])
+            ]);
+
+            if (!$tradeData || !isset($tradeData['result']['data']['dailyReports'])) {
+                $this->warn("Invalid trade data format for trade ID: {$trade->id}");
+                Storage::move($trade->file_path, 'failed_trades/' . basename($trade->file_path));
+                continue;
+            }
 
                 foreach ($tradeData['result']['data']['dailyReports'] as $report) {
                     if ($report['date'] === $date && isset($report['dailyProfit'])) {
