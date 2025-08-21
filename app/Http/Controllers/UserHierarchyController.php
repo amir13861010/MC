@@ -18,10 +18,12 @@ class UserHierarchyController extends Controller
      */
     private function getUserHierarchy($user)
     {
-        $subUsers = User::where('friend_id', $user->user_id)->get();
+        // استفاده از رابطه Eloquent برای بهینه‌سازی کوئری‌ها
+        $user->load('recursiveSubUsers');
+        
         return [
             'user_id' => $user->user_id,
-            'sub_users' => $subUsers->map(function($subUser) {
+            'sub_users' => $user->recursiveSubUsers->map(function($subUser) {
                 return $this->getUserHierarchy($subUser);
             })->toArray()
         ];
@@ -84,18 +86,23 @@ class UserHierarchyController extends Controller
      *     ),
      *     @OA\Response(
      *         response=200,
-     *         description="List of sub-users",
+     *         description="List of sub-users with full hierarchy",
      *         @OA\JsonContent(
-     *             type="array",
-     *             @OA\Items(
-     *                 type="object",
-     *                 @OA\Property(property="user_id", type="string", example="MC34234"),
-     *                 @OA\Property(
-     *                     property="sub_users",
-     *                     type="array",
-     *                     @OA\Items(
-     *                         type="object",
-     *                         @OA\Property(property="user_id", type="string", example="MC34235")
+     *             type="object",
+     *             @OA\Property(property="user_id", type="string", example="MC34234"),
+     *             @OA\Property(
+     *                 property="sub_users",
+     *                 type="array",
+     *                 @OA\Items(
+     *                     type="object",
+     *                     @OA\Property(property="user_id", type="string", example="MC34235"),
+     *                     @OA\Property(
+     *                         property="sub_users",
+     *                         type="array",
+     *                         @OA\Items(
+     *                             type="object",
+     *                             @OA\Property(property="user_id", type="string", example="MC34236")
+     *                         )
      *                     )
      *                 )
      *             )
@@ -110,23 +117,10 @@ class UserHierarchyController extends Controller
     public function getSubUsers($userId)
     {
         $user = User::where('user_id', $userId)->firstOrFail();
-        $subUsers = User::where('friend_id', $userId)
-            ->with(['subUsers' => function($query) {
-                $query->select('id', 'user_id', 'friend_id');
-            }])
-            ->select('id', 'user_id')
-            ->get()
-            ->map(function($user) {
-                return [
-                    'user_id' => $user->user_id,
-                    'sub_users' => $user->subUsers->map(function($subUser) {
-                        return [
-                            'user_id' => $subUser->user_id
-                        ];
-                    })
-                ];
-            });
         
-        return response()->json($subUsers);
+        // بازگشت سلسله مراتب کامل
+        $hierarchy = $this->getUserHierarchy($user);
+        
+        return response()->json($hierarchy);
     }
-} 
+}

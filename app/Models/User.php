@@ -72,6 +72,11 @@ class User extends Authenticatable implements JWTSubject
     {
         return $this->hasMany(User::class, 'friend_id', 'user_id');
     }
+    public function recursiveSubUsers()
+    {
+        return $this->hasMany(User::class, 'friend_id', 'user_id')
+                    ->with('recursiveSubUsers');
+    }
 
     public function deposits()
     {
