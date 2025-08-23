@@ -81,8 +81,6 @@ class Deposit extends Model
     {
         $remainingAmount = $amount;
 
-        // لاگ‌گذاری برای دیباگ
-
         $incompleteRewards = \App\Models\Reward::where('user_id', $parent->user_id)
             ->where(function($query) {
                 $query->where('leg_a_balance', '<', 1500)
@@ -140,7 +138,7 @@ class Deposit extends Model
                 $isRewarded = true;
                 $rewardAmount = 500;
                 if ($reward->reward_amount == 0) {
-                    $parent->increment('deposit_balance', 500);
+                    $parent->increment('gain_profit', 1000); // تغییر از deposit_balance به gain_profit
                 }
             }
 
@@ -215,7 +213,7 @@ class Deposit extends Model
         static::created(function ($deposit) {
             if ($deposit->status === self::STATUS_COMPLETED) {
                 $deposit->processLegRewardForAllParents();
-                $deposit->processLegacyRewardForAllParents(); // اضافه شد
+                $deposit->processLegacyRewardForAllParents();
             }
         });
     }
