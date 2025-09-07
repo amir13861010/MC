@@ -4,62 +4,59 @@ namespace App\Console;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
-use App\Jobs\CalculateDailyBonusJob;
 
 class Kernel extends ConsoleKernel
 {
     /**
      * Define the application's command schedule.
      *
-     * These jobs run in a default schedule.
-     *
      * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
      * @return void
      */
     protected function schedule(Schedule $schedule): void
     {
-        // Process leg rewards daily at midnight
-        $schedule->command('rewards:process-leg-rewards')
-                ->daily()
-                ->at('00:00')
-                ->withoutOverlapping()
-                ->appendOutputTo(storage_path('logs/rewards.log'));
-
-        // Process daily profit for all users daily at 01:00 AM
-        $schedule->command('trade:process-daily-profit')
-                ->daily()
-                ->at('01:00')
-                ->withoutOverlapping()
-                ->appendOutputTo(storage_path('logs/daily-profit.log'));
-
-        // Deactivate expired trades daily at 00:30 AM
+        // Deactivate expired trades - 00:00 UTC (03:30 Iran time)
         $schedule->command('trade:deactivate-expired')
-                ->daily()
-                ->at('00:30')
+                ->dailyAt('00:00')
                 ->withoutOverlapping()
                 ->appendOutputTo(storage_path('logs/deactivate-expired.log'));
 
-        // Auto-renew expired trades daily at 00:45 AM
+        // Check and auto-renew expired trades - 00:05 UTC (03:35 Iran time)
         $schedule->command('trade:check-expired')
-                ->daily()
-                ->at('00:45')
+                ->dailyAt('00:05')
                 ->withoutOverlapping()
                 ->appendOutputTo(storage_path('logs/check-expired.log'));
 
-        // Calculate daily bonus using Job (better for queue handling)
-        $schedule->job(new CalculateDailyBonusJob())
-                ->daily()
-                ->at('23:59')
+        // Process leg rewards - 00:10 UTC (03:40 Iran time)
+        $schedule->command('rewards:process-leg-rewards')
+                ->dailyAt('00:10')
+                ->withoutOverlapping()
+                ->appendOutputTo(storage_path('logs/rewards.log'));
+
+        // Process daily profit for YESTERDAY - 00:15 UTC (03:45 Iran time)
+        // پردازش سود دیروز - امروز صبح
+        $schedule->command('trade:process-daily-profit')
+                ->dailyAt('00:15')
+                ->withoutOverlapping()
+                ->appendOutputTo(storage_path('logs/daily-profit.log'));
+
+        // Calculate daily bonus - 00:20 UTC (03:50 Iran time)
+        $schedule->command('bonus:calculate-daily')
+                ->dailyAt('00:20')
                 ->withoutOverlapping()
                 ->appendOutputTo(storage_path('logs/daily-bonus.log'));
 
-        // Keep the command as backup
-        $schedule->command('bonus:calculate-daily')
-                ->daily()
-                ->at('23:58')
+        // Run queue worker every minute
+        $schedule->command('queue:work --stop-when-empty')
+                ->everyMinute()
                 ->withoutOverlapping()
-                ->appendOutputTo(storage_path('logs/daily-bonus-command.log'));
+                ->appendOutputTo(storage_path('logs/queue.log'));
 
+        // Run scheduler every minute
+        $schedule->command('schedule:run')
+                ->everyMinute()
+                ->withoutOverlapping()
+                ->appendOutputTo(storage_path('logs/scheduler.log'));
     }
 
     /**
@@ -73,4 +70,4 @@ class Kernel extends ConsoleKernel
 
         require base_path('routes/console.php');
     }
-} 
+}
