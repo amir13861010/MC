@@ -19,23 +19,17 @@ class ProcessDailyProfitJob implements ShouldQueue
 
     protected $date;
 
-    /**
-     * Create a new job instance.
-     */
     public function __construct($date = null)
     {
         $this->date = $date ?: now()->format('Y-m-d');
     }
 
-    /**
-     * Execute the job.
-     */
     public function handle(): void
     {
         Log::info("Processing daily profit for date: {$this->date}");
 
-        // Get all active users
-        $users = User::where('status', 'active')->get();
+        // Get ALL users (without status condition)
+        $users = User::all();
 
         foreach ($users as $user) {
             try {
@@ -46,13 +40,10 @@ class ProcessDailyProfitJob implements ShouldQueue
         }
     }
 
-    /**
-     * Process daily profit for a specific user
-     */
     private function processUserDailyProfit(User $user, string $date): void
     {
         // Check if user has a trade file
-        $trade = Trade::where('user_id', $user->id)->first();
+        $trade = Trade::where('user_id', $user->user_id)->first();
 
         // If user doesn't have trade file, create one
         if (!$trade) {
@@ -118,14 +109,10 @@ class ProcessDailyProfitJob implements ShouldQueue
             'daily_profit_percent' => $dailyProfitPercent,
             'deposit_balance' => $depositBalance,
             'daily_profit_amount' => $dailyProfitAmount,
-            'new_capital_profit' => $user->capital_profit,
-            'last_processed_at' => $trade->last_processed_at
+            'new_capital_profit' => $user->capital_profit
         ]);
     }
 
-    /**
-     * Create trade file for user
-     */
     private function createTradeFile(User $user): ?Trade
     {
         try {
@@ -153,35 +140,29 @@ class ProcessDailyProfitJob implements ShouldQueue
                 }
 
                 // Save new file
-                $filename = $user->id . '.json';
+                $filename = $user->user_id . '.json';
                 $filePath = 'trades/' . $filename;
                 Storage::disk('local')->put($filePath, json_encode($result, JSON_PRETTY_PRINT));
 
                 // Create or update trade record
                 $trade = Trade::updateOrCreate(
-                    ['user_id' => $user->id],
+                    ['user_id' => $user->user_id],
                     [
                         'file_path' => $filePath,
                         'level' => $level,
                         'amount' => $user->deposit_amount ?? 0,
-                        'last_refreshed' => now(),
-                        'last_processed_at' => null
+                        'last_refreshed' => now()
                     ]
                 );
 
-                Log::info('Trade file created for user: ' . $user->id);
+                Log::info('Trade file created for user: ' . $user->user_id);
                 return $trade;
             } else {
-                Log::error('Trade API failed for user: ' . $user->id, [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                ]);
+                Log::error('Trade API failed for user: ' . $user->user_id);
                 return null;
             }
         } catch (\Exception $e) {
-            Log::error('Error creating trade file for user: ' . $user->id, [
-                'error' => $e->getMessage()
-            ]);
+            Log::error('Error creating trade file for user: ' . $user->user_id);
             return null;
         }
     }

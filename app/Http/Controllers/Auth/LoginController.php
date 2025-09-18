@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Traits\HandlesDatabaseErrors;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -17,6 +18,7 @@ use Tymon\JWTAuth\Facades\JWTAuth;
  */
 class LoginController extends Controller
 {
+    use HandlesDatabaseErrors;
     /**
      * @OA\Post(
      *     path="/api/auth/login",
@@ -74,34 +76,36 @@ class LoginController extends Controller
             'password' => 'required|string'
         ]);
 
-        // Find user by user_id
-        $user = User::where('user_id', $request->username)->first();
+        return $this->handleDatabaseOperation(function () use ($request) {
+            // Find user by user_id
+            $user = User::where('user_id', $request->username)->first();
 
-        // Check if user exists and password is correct
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            throw ValidationException::withMessages([
-                'username' => ['Invalid credentials']
+            // Check if user exists and password is correct
+            if (!$user || !Hash::check($request->password, $user->password)) {
+                throw ValidationException::withMessages([
+                    'username' => ['Invalid credentials']
+                ]);
+            }
+
+            // Generate JWT token
+            $token = JWTAuth::fromUser($user);
+
+            return response()->json([
+                'message' => 'Login successful',
+                'user' => [
+                    'user_id' => $user->user_id,
+                    'first_name' => $user->first_name,
+                    'last_name' => $user->last_name,
+                    'email' => $user->email,
+                    'phone' => $user->mobile,
+                    'country' => $user->country,
+                    'deposit_balance' => $user->deposit_balance,
+                    'authenticator_active' => (bool) $user->two_factor_enabled,
+                    'suspend' => (bool) $user->suspend
+                ],
+                'token' => $token
             ]);
-        }
-
-        // Generate JWT token
-        $token = JWTAuth::fromUser($user);
-
-        return response()->json([
-            'message' => 'Login successful',
-            'user' => [
-                'user_id' => $user->user_id,
-                'first_name' => $user->first_name,
-                'last_name' => $user->last_name,
-                'email' => $user->email,
-                'phone' => $user->mobile,
-                'country' => $user->country,
-                'deposit_balance' => $user->deposit_balance,
-                'authenticator_active' => (bool) $user->two_factor_enabled,
-                'suspend' => (bool) $user->suspend
-            ],
-            'token' => $token
-        ]);
+        });
     }
 
     /**
@@ -150,23 +154,25 @@ class LoginController extends Controller
             $exp = $payload->get('exp');
             $active = ($exp > time());
 
-            // Find user by numeric id
-            $user = User::find($user_numeric_id);
+            return $this->handleDatabaseOperation(function () use ($user_numeric_id, $exp, $active) {
+                // Find user by numeric id
+                $user = User::find($user_numeric_id);
 
-            if (!$user) {
+                if (!$user) {
+                    return response()->json([
+                        'message' => 'User not found'
+                    ], 404);
+                }
+
                 return response()->json([
-                    'message' => 'User not found'
-                ], 404);
-            }
-
-            return response()->json([
-                'user_id' => $user->user_id, // MC-XXXXXX format
-                'exp' => $exp,
-                'active' => $active,
-                'authenticator_active' => (bool) $user->two_factor_enabled,
-                'is_admin' => $user->role === 'admin',
-                'suspend' => (bool) $user->suspend
-            ]);
+                    'user_id' => $user->user_id, // MC-XXXXXX format
+                    'exp' => $exp,
+                    'active' => $active,
+                    'authenticator_active' => (bool) $user->two_factor_enabled,
+                    'is_admin' => $user->role === 'admin',
+                    'suspend' => (bool) $user->suspend
+                ]);
+            });
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Invalid token'
@@ -212,16 +218,18 @@ class LoginController extends Controller
             'user_id' => 'required|string|regex:/^MC\\d{6,}$/'
         ]);
 
-        $user = User::where('user_id', $request->user_id)->first();
-        if (!$user) {
+        return $this->handleDatabaseOperation(function () use ($request) {
+            $user = User::where('user_id', $request->user_id)->first();
+            if (!$user) {
+                return response()->json([
+                    'message' => 'User not found'
+                ], 404);
+            }
+            $user->suspend = false;
+            $user->save();
             return response()->json([
-                'message' => 'User not found'
-            ], 404);
-        }
-        $user->suspend = false;
-        $user->save();
-        return response()->json([
-            'message' => 'User unsuspended successfully'
-        ]);
+                'message' => 'User unsuspended successfully'
+            ]);
+        });
     }
 } 

@@ -30,6 +30,13 @@ Route::get('test', function () {
     return response()->json(['message' => 'API routes are working!']);
 });
 
+// Test database error handling
+Route::get('test-db-error', function () {
+    // This will trigger database connection error handling
+    \App\Models\User::first();
+    return response()->json(['message' => 'Database connection is working!']);
+});
+
 Route::middleware([
     'auth:sanctum',
     config('jetstream.auth_middleware'),
